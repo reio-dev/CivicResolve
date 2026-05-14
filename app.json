@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "CivicResolv",
+    "slug": "civicresolv",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "civicresolv",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.civicresolv.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "CivicResolv needs camera access to capture photos of civic issues for reporting.",
+        "NSPhotoLibraryUsageDescription": "CivicResolv needs photo library access to select existing photos for issue reports.",
+        "NSLocationWhenInUseUsageDescription": "CivicResolv needs your location to accurately report civic issues in your area."
+      }
+    },
+    "android": {
+      "package": "com.civicresolv.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#1E40AF",
+        "foregroundImage": "./assets/images/icon.png"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
+    },
+    "web": {
+      "output": "single",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#1E40AF",
+          "dark": {
+            "backgroundColor": "#0F172A"
+          }
+        }
+      ],
+      "expo-web-browser",
+      "expo-audio"
+    ],
+    "experiments": {
+      "reactCompiler": true
+    }
+  }
+}
