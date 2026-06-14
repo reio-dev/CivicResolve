@@ -40,6 +40,7 @@ export const adminUsers = pgTable("admin_users", {
   role: text("role").notNull().default("resolver"),
   departmentId: varchar("department_id").references(() => departments.id),
   status: text("status").notNull().default("active"),
+  pushToken: text("push_token"),
   lastActiveAt: timestamp("last_active_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -131,6 +132,28 @@ export const issueAssignmentsRelations = relations(issueAssignments, ({ one }) =
   }),
 }));
 
+export const creditAllocations = pgTable("credit_allocations", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id")
+    .notNull()
+    .references(() => users.id),
+  amount: integer("amount").notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const creditAllocationsRelations = relations(creditAllocations, ({ one }) => ({
+  user: one(users, {
+    fields: [creditAllocations.userId],
+    references: [users.id],
+  }),
+}));
+
+export type InsertCreditAllocation = typeof creditAllocations.$inferInsert;
+export type CreditAllocation = typeof creditAllocations.$inferSelect;
+
 export const users = pgTable("users", {
   id: varchar("id")
     .primaryKey()
@@ -139,18 +162,26 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   displayName: text("display_name"),
   avatarUrl: text("avatar_url"),
-  points: integer("points").default(0).notNull(),
-  level: integer("level").default(1).notNull(),
-  issuesReported: integer("issues_reported").default(0).notNull(),
-  issuesResolved: integer("issues_resolved").default(0).notNull(),
-  validationsGiven: integer("validations_given").default(0).notNull(),
+  bio: text("bio"),
+  phone: text("phone"),
+  email: text("email"),
+  points: integer("points").notNull().default(0),
+  credits: integer("credits").notNull().default(0),
+  level: integer("level").notNull().default(1),
+  issuesReported: integer("issues_reported").notNull().default(0),
+  issuesResolved: integer("issues_resolved").notNull().default(0),
+  validationsGiven: integer("validations_given").notNull().default(0),
+  pushToken: text("push_token"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const usersRelations = relations(users, ({ many }) => ({
   issues: many(issues),
   validations: many(validations),
   comments: many(comments),
+  redemptions: many(redemptions),
+  creditAllocations: many(creditAllocations),
 }));
 
 export const issues = pgTable("issues", {
@@ -189,6 +220,7 @@ export const issuesRelations = relations(issues, ({ one, many }) => ({
   validations: many(validations),
   comments: many(comments),
   statusUpdates: many(statusUpdates),
+  assignments: many(issueAssignments),
 }));
 
 export const validations = pgTable("validations", {
@@ -287,6 +319,28 @@ export const userBadges = pgTable("user_badges", {
   earnedAt: timestamp("earned_at").defaultNow().notNull(),
 });
 
+export const redemptions = pgTable("redemptions", {
+  id: varchar("id")
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: varchar("user_id")
+    .notNull()
+    .references(() => users.id),
+  amount: integer("amount").notNull(),
+  couponCode: text("coupon_code").notNull().unique(),
+  status: text("status").notNull().default("active"),
+  purpose: text("purpose").notNull().default("Government Bills & Taxes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"),
+});
+
+export const redemptionsRelations = relations(redemptions, ({ one }) => ({
+  user: one(users, {
+    fields: [redemptions.userId],
+    references: [users.id],
+  }),
+}));
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -337,6 +391,13 @@ export const insertIssueAssignmentSchema = createInsertSchema(issueAssignments).
   updatedAt: true,
 });
 
+
+
+export const insertRedemptionSchema = createInsertSchema(redemptions).omit({
+  id: true,
+  createdAt: true,
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type Issue = typeof issues.$inferSelect;
@@ -356,3 +417,6 @@ export type Resolver = typeof resolvers.$inferSelect;
 export type InsertResolver = z.infer<typeof insertResolverSchema>;
 export type IssueAssignment = typeof issueAssignments.$inferSelect;
 export type InsertIssueAssignment = z.infer<typeof insertIssueAssignmentSchema>;
+
+export type Redemption = typeof redemptions.$inferSelect;
+export type InsertRedemption = z.infer<typeof insertRedemptionSchema>;

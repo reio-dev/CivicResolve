@@ -5,18 +5,23 @@ import {
   ScrollView,
   Pressable,
   Dimensions,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useQuery } from "@tanstack/react-query";
 
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { useAuth } from "@/hooks/useAuth";
 import { Colors } from "@/constants/theme";
+import { useTranslation } from "react-i18next";
 
 // ─── Design Tokens ───────────────────────────────
 const GREEN = Colors.light.primary;
@@ -125,9 +130,17 @@ function StatCard({
 
 // ─── Main Screen ─────────────────────────────────
 export default function ProfileScreen() {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const { user, logout } = useAuth();
+  const { user, logout, refreshUser } = useAuth();
+  const { t } = useTranslation();
+
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshUser();
+    }, [])
+  );
 
   // Leaderboard for rank computation
   const { data: leaderboard } = useQuery({ queryKey: ["/api/leaderboard"] });
@@ -177,12 +190,22 @@ export default function ProfileScreen() {
       >
         {/* ── Header ── */}
         <Animated.View entering={FadeIn.duration(400)} style={styles.header}>
+          <Pressable 
+            style={styles.settingsBtn}
+            onPress={() => navigation.navigate("Settings")}
+          >
+            <Feather name="settings" size={24} color={TEXT} />
+          </Pressable>
 
           {/* Avatar */}
           <View style={styles.avatarWrap}>
-            <LinearGradient colors={["#16A34A", GREEN]} style={styles.avatarGradient}>
-              <ThemedText style={styles.avatarInitial}>{initial}</ThemedText>
-            </LinearGradient>
+            {(user as any)?.avatarUrl ? (
+              <Image source={{ uri: (user as any).avatarUrl }} style={styles.avatarGradient} />
+            ) : (
+              <LinearGradient colors={["#16A34A", GREEN]} style={styles.avatarGradient}>
+                <ThemedText style={styles.avatarInitial}>{initial}</ThemedText>
+              </LinearGradient>
+            )}
             <View style={styles.levelBadge}>
               <ThemedText style={styles.levelBadgeText}>Lvl {level}</ThemedText>
             </View>
@@ -191,18 +214,21 @@ export default function ProfileScreen() {
           <ThemedText style={styles.tierLabel}>{tierLabel}</ThemedText>
           <ThemedText style={styles.nameText}>{displayName}</ThemedText>
           <ThemedText style={styles.bioText}>
-            CivicCore member since {memberSince}. Actively shaping the urban landscape through high-impact initiatives.
+            {(user as any)?.bio || `CivicCore member since ${memberSince}. Actively shaping the urban landscape through high-impact initiatives.`}
           </ThemedText>
 
-          <Pressable style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.75 }]}>
-            <ThemedText style={styles.editBtnText}>Edit Profile</ThemedText>
+          <Pressable 
+            style={({ pressed }) => [styles.editBtn, pressed && { opacity: 0.75 }]}
+            onPress={() => navigation.navigate("EditProfile")}
+          >
+            <ThemedText style={styles.editBtnText}>{t("profile.editProfile")}</ThemedText>
           </Pressable>
         </Animated.View>
 
         {/* ── XP Card ── */}
         <Animated.View entering={FadeInUp.delay(80).duration(350)} style={styles.xpCard}>
           <View style={styles.xpCardHeader}>
-            <ThemedText style={styles.xpLabel}>TOTAL EXPERIENCE</ThemedText>
+            <ThemedText style={styles.xpLabel}>{t("profile.totalExperience")}</ThemedText>
             <Feather name="trending-up" size={18} color={GREEN} />
           </View>
 
@@ -212,7 +238,7 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.xpBarMeta}>
-            <ThemedText style={styles.xpMetaLeft}>Next Level: {nextLevelXP.toLocaleString()}</ThemedText>
+            <ThemedText style={styles.xpMetaLeft}>{t("profile.nextLevel")}: {nextLevelXP.toLocaleString()}</ThemedText>
             <ThemedText style={styles.xpMetaRight}>{Math.round(xpProgress * 100)}%</ThemedText>
           </View>
           <View style={styles.xpBarBg}>
@@ -223,26 +249,26 @@ export default function ProfileScreen() {
         {/* ── Streak Card ── */}
         <Animated.View entering={FadeInUp.delay(160).duration(350)} style={styles.streakCard}>
           <View style={styles.streakHeader}>
-            <ThemedText style={styles.streakLabel}>ACTIVITY STREAK</ThemedText>
+            <ThemedText style={styles.streakLabel}>{t("profile.activityStreak")}</ThemedText>
             <Feather name="zap" size={18} color="#064E1E" />
           </View>
           <ThemedText style={styles.streakNumber}>{streak}</ThemedText>
-          <ThemedText style={styles.streakDays}>Days</ThemedText>
+          <ThemedText style={styles.streakDays}>{t("profile.days")}</ThemedText>
           <ThemedText style={styles.streakQuote}>{streakQuote}</ThemedText>
         </Animated.View>
 
         {/* ── Stat: Issues Fixed ── */}
-        <StatCard icon="check-circle" value={issuesFixed} label="ISSUES FIXED" delay={220} />
+        <StatCard icon="check-circle" value={issuesFixed} label={t("profile.issuesFixed")} delay={220} />
 
         {/* ── Stat: Global Rank ── */}
-        <StatCard icon="award" value={rankLabel} label="GLOBAL RANK" delay={280} />
+        <StatCard icon="award" value={rankLabel} label={t("profile.globalRank")} delay={280} />
 
         {/* ── Stat: Policy Drafts (issues reported) ── */}
-        <StatCard icon="file-text" value={policyDrafts} label="POLICY DRAFTS" delay={330} />
+        <StatCard icon="file-text" value={policyDrafts} label={t("profile.policyDrafts")} delay={330} />
 
         {/* ── Medal Case ── */}
         <Animated.View entering={FadeInUp.delay(380).duration(350)} style={styles.medalSection}>
-          <ThemedText style={styles.medalSectionTitle}>Medal Case</ThemedText>
+          <ThemedText style={styles.medalSectionTitle}>{t("profile.medalCase")}</ThemedText>
           <View style={styles.medalGrid}>
             {medals.map((m) => (
               <MedalCard key={m.id} medal={m} />
@@ -257,7 +283,7 @@ export default function ProfileScreen() {
             onPress={logout}
           >
             <Feather name="log-out" size={18} color="#EF4444" />
-            <ThemedText style={styles.logoutText}>Log Out</ThemedText>
+            <ThemedText style={styles.logoutText}>{t("profile.logOut")}</ThemedText>
           </Pressable>
         </Animated.View>
       </ScrollView>
@@ -280,6 +306,14 @@ const styles = StyleSheet.create({
     padding: 20,
     alignItems: "center",
     marginBottom: 10,
+    position: "relative",
+  },
+  settingsBtn: {
+    position: "absolute",
+    top: 20,
+    right: 20,
+    zIndex: 10,
+    padding: 4,
   },
   appBarRow: {
     flexDirection: "row",

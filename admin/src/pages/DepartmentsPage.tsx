@@ -13,6 +13,7 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
+import Select from '../components/Select';
 
 const departmentSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -37,7 +38,7 @@ const colorOptions = [
   { value: '#10B981', label: 'Green' },
   { value: '#F59E0B', label: 'Orange' },
   { value: '#EF4444', label: 'Red' },
-  { value: '#8B5CF6', label: 'Purple' },
+  { value: '#52525b', label: 'Zinc' },
   { value: '#EC4899', label: 'Pink' },
   { value: '#06B6D4', label: 'Cyan' },
   { value: '#84CC16', label: 'Lime' },
@@ -284,7 +285,7 @@ const DepartmentsPage: React.FC = () => {
               placeholder="Search departments..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+              className="w-full pl-10 pr-4 py-2 border border-gray-200/50 dark:border-zinc-800/50 rounded-lg bg-white/50 dark:bg-black/40 backdrop-blur-md text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
             />
           </div>
         </CardHeader>
@@ -394,16 +395,14 @@ const DepartmentsPage: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               Icon
             </label>
-            <select
+            <Select
               {...register('icon')}
-              className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all"
-            >
-              {iconOptions.map((icon) => (
-                <option key={icon} value={icon}>
-                  {icon.charAt(0).toUpperCase() + icon.slice(1)}
-                </option>
-              ))}
-            </select>
+              options={iconOptions.map((icon) => ({
+                value: icon,
+                label: icon.charAt(0).toUpperCase() + icon.slice(1)
+              }))}
+              className="py-2.5"
+            />
           </div>
 
           <Controller

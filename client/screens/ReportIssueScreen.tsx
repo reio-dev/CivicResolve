@@ -8,8 +8,9 @@ import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { File } from "expo-file-system/next";
 import * as ImageManipulator from "expo-image-manipulator";
-import { useAudioRecorder, useAudioPlayer, useAudioPlayerStatus, RecordingPresets, requestRecordingPermissionsAsync } from "expo-audio";
+import { Audio } from "expo-av";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Animated, { FadeIn, FadeInUp, useSharedValue, useAnimatedStyle, withSpring, withRepeat, withTiming } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
 import { Image } from "expo-image";
@@ -18,8 +19,10 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useAuth } from "@/hooks/useAuth";
+import { useLanguage } from "@/hooks/useLanguage";
 import { apiRequest } from "@/lib/query-client";
 import { Colors, Spacing, BorderRadius, CategoryColors } from "@/constants/theme";
+import { useTranslation } from "react-i18next";
 
 const CARD_BG = "#111111";
 const CARD_BORDER = "#222222";
@@ -49,7 +52,9 @@ export default function ReportIssueScreen() {
   const headerHeight = useHeaderHeight();
   const navigation = useNavigation();
   const { user, refreshUser } = useAuth();
+  const { language } = useLanguage();
   const queryClient = useQueryClient();
+  const { t } = useTranslation();
 
   const [step, setStep] = useState<Step>("camera");
   const [permission, requestPermission] = useCameraPermissions();
@@ -64,6 +69,35 @@ export default function ReportIssueScreen() {
   const [privacy, setPrivacy] = useState<string>("Public");
   const [location, setLocation] = useState<{ latitude: number; longitude: number; address?: string; district?: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analyzingWordIndex, setAnalyzingWordIndex] = useState(0);
+  const analyzingWords = [t("report.analyzing"), t("report.understanding"), t("report.classifying"), t("report.generating")];
+  const [isGroqEnabled, setIsGroqEnabled] = useState(true);
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const groq = await AsyncStorage.getItem("setting_groq_autofill");
+        if (groq !== null) setIsGroqEnabled(groq === "true");
+      } catch (e) {
+        console.error("Failed to load settings", e);
+      }
+    };
+    loadSettings();
+  }, [step]); // Re-load when step changes to ensure freshness
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (isAnalyzing) {
+      setAnalyzingWordIndex(0);
+      interval = setInterval(() => {
+        setAnalyzingWordIndex((prev) => (prev + 1) % analyzingWords.length);
+      }, 600);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isAnalyzing]);
 
   // Voice recording state
   const [isRecording, setIsRecording] = useState(false);
@@ -71,16 +105,11 @@ export default function ReportIssueScreen() {
   const [transcript, setTranscript] = useState("");
   const [audioUri, setAudioUri] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  
-  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const audioPlayer = useAudioPlayer(audioUri || null);
-  const playerStatus = useAudioPlayerStatus(audioPlayer);
-  
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    setIsPlaying(playerStatus.playing);
-  }, [playerStatus.playing]);
+  const recordingRef = useRef<Audio.Recording | null>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
+
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Waveform animation
   const waveValues = Array.from({ length: 7 }, () => useSharedValue(0.3));
@@ -94,11 +123,14 @@ export default function ReportIssueScreen() {
     }
   }, [step]);
 
-  // Cleanup timer on unmount
+  // Cleanup timer and sound on unmount
   useEffect(() => {
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
+      }
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
       }
     };
   }, []);
@@ -134,13 +166,19 @@ export default function ReportIssueScreen() {
 
   const startRecording = async () => {
     try {
-      const { granted } = await requestRecordingPermissionsAsync();
+      const { granted } = await Audio.requestPermissionsAsync();
       if (!granted) {
         Alert.alert("Permission needed", "Microphone access is required for voice reports.");
         return;
       }
-      await audioRecorder.prepareToRecordAsync();
-      audioRecorder.record();
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+      const recording = new Audio.Recording();
+      await recording.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      await recording.startAsync();
+      recordingRef.current = recording;
       setIsRecording(true);
       setRecordingDuration(0);
       timerRef.current = setInterval(() => {
@@ -154,17 +192,20 @@ export default function ReportIssueScreen() {
 
   const stopRecording = async () => {
     try {
-      if (audioRecorder.isRecording) {
-        await audioRecorder.stop();
-      }
-      const uri = audioRecorder.uri;
-      setIsRecording(false);
-      if (timerRef.current) clearInterval(timerRef.current);
+      const recording = recordingRef.current;
+      if (recording) {
+        await recording.stopAndUnloadAsync();
+        await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+        const uri = recording.getURI();
+        recordingRef.current = null;
+        setIsRecording(false);
+        if (timerRef.current) clearInterval(timerRef.current);
 
-      if (uri) {
-        setAudioUri(uri);
-        // Auto-fill description with transcription
-        transcribeAudio(uri);
+        if (uri) {
+          setAudioUri(uri);
+          // Auto-fill description with transcription
+          transcribeAudio(uri);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -227,7 +268,23 @@ export default function ReportIssueScreen() {
   const playAudio = async () => {
     if (!audioUri) return;
     try {
-      audioPlayer.play();
+      // Unload previous sound if any
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+      }
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: audioUri },
+        { shouldPlay: true },
+        (status) => {
+          if (status.isLoaded) {
+            setIsPlaying(status.isPlaying);
+            if (status.didJustFinish) {
+              setIsPlaying(false);
+            }
+          }
+        }
+      );
+      soundRef.current = sound;
     } catch (err) {
       console.error("Playback error:", err);
     }
@@ -235,7 +292,10 @@ export default function ReportIssueScreen() {
 
   const stopPlayback = async () => {
     try {
-      audioPlayer.pause();
+      if (soundRef.current) {
+        await soundRef.current.pauseAsync();
+        setIsPlaying(false);
+      }
     } catch (err) {
       console.error("Stop error:", err);
     }
@@ -277,14 +337,23 @@ export default function ReportIssueScreen() {
     }
   };
 
+  useEffect(() => {
+    if (locationPermission?.granted && !location) {
+      getLocation();
+    }
+  }, [locationPermission?.granted]);
+
   const takePicture = async () => {
     if (cameraRef.current) {
       try {
         const photo = await cameraRef.current.takePictureAsync();
         if (photo?.uri) {
           setCapturedImage(photo.uri);
-          await getLocation();
+          if (!location) getLocation();
           setStep("details");
+          if (isGroqEnabled) {
+            analyzeImage(photo.uri);
+          }
         }
       } catch (error) {
         console.error("Camera error:", error);
@@ -296,8 +365,34 @@ export default function ReportIssueScreen() {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.8 });
     if (!result.canceled && result.assets[0]) {
       setCapturedImage(result.assets[0].uri);
-      await getLocation();
+      if (!location) getLocation();
       setStep("details");
+      if (isGroqEnabled) {
+        analyzeImage(result.assets[0].uri);
+      }
+    }
+  };
+
+  const analyzeImage = async (uri: string) => {
+    setIsAnalyzing(true);
+    try {
+      const base64Image = await convertImageToBase64(uri);
+      const response = await apiRequest("POST", "/api/analyze-image", { image: base64Image, language });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.title) setTitle(data.title);
+        if (data.description) setDescription(data.description);
+        if (data.category && CATEGORIES.some(c => c.id === data.category)) {
+          setCategory(data.category);
+        }
+        if (data.urgency && URGENCY_LEVELS.includes(data.urgency)) {
+          setUrgency(data.urgency);
+        }
+      }
+    } catch (error) {
+      console.error("Image analysis failed:", error);
+    } finally {
+      setIsAnalyzing(false);
     }
   };
 
@@ -358,14 +453,55 @@ export default function ReportIssueScreen() {
   };
 
   const handleSubmit = async () => {
-    if (!location) {
+    setSubmitting(true);
+    let currentLoc = location;
+
+    try {
+      if (locationPermission?.granted) {
+        const freshLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (
+          !currentLoc ||
+          Math.abs(freshLoc.coords.latitude - currentLoc.latitude) > 0.0001 ||
+          Math.abs(freshLoc.coords.longitude - currentLoc.longitude) > 0.0001
+        ) {
+          const [address] = await Location.reverseGeocodeAsync({ latitude: freshLoc.coords.latitude, longitude: freshLoc.coords.longitude });
+          const area = (address as any)?.subLocality || address?.street || "";
+          const district = address?.city || (address as any)?.district || "";
+          const state = address?.region || "";
+          const postalCode = address?.postalCode || "";
+          const addressParts = [area, district, state, postalCode].filter(Boolean);
+          const fullAddress = addressParts.join(", ");
+
+          currentLoc = {
+            latitude: freshLoc.coords.latitude,
+            longitude: freshLoc.coords.longitude,
+            address: fullAddress,
+            district
+          };
+          setLocation(currentLoc);
+        }
+      }
+    } catch (e) {
+      console.log("Location verification failed:", e);
+    }
+
+    if (!currentLoc) {
       Alert.alert("Missing Location", "Please wait for location to be detected.");
+      setSubmitting(false);
       return;
     }
-    const finalTitle = title.trim() || "Reported Issue";
+
+    let finalTitle = title.trim();
     const finalDesc = description.trim() || transcript || "Reported via voice";
 
-    setSubmitting(true);
+    if (!finalTitle && finalDesc !== "Reported via voice") {
+      const firstSentence = finalDesc.split(/[.!?\n]/)[0]?.trim();
+      if (firstSentence && firstSentence.length > 5) {
+        finalTitle = firstSentence.substring(0, 60);
+      }
+    }
+    finalTitle = finalTitle || "Reported Issue";
+
     let mediaUrls: string[] = [];
 
     // Upload image
@@ -395,10 +531,10 @@ export default function ReportIssueScreen() {
       description: finalDesc,
       category,
       priority: priorityFromUrgency(urgency),
-      latitude: location.latitude,
-      longitude: location.longitude,
-      address: location.address,
-      district: location.district,
+      latitude: location?.latitude,
+      longitude: location?.longitude,
+      address: location?.address,
+      district: location?.district,
       images: mediaUrls,
       reporterId: user?.id,
     });
@@ -411,13 +547,13 @@ export default function ReportIssueScreen() {
     return (
       <ThemedView style={[styles.container, styles.centered]}>
         <Feather name="camera-off" size={48} color={Colors.light.muted} />
-        <ThemedText type="body" style={{ color: Colors.light.muted, marginTop: Spacing.lg, textAlign: "center" }}>Camera access is needed to report issues</ThemedText>
+        <ThemedText type="body" style={{ color: Colors.light.muted, marginTop: Spacing.lg, textAlign: "center" }}>{t("report.cameraNeeded")}</ThemedText>
         <Pressable style={[styles.permissionButton, { backgroundColor: GREEN }]} onPress={requestPermission}>
-          <ThemedText type="body" style={{ color: "#000000", fontWeight: "700" }}>Enable Camera</ThemedText>
+          <ThemedText type="body" style={{ color: "#000000", fontWeight: "700" }}>{t("report.enableCamera")}</ThemedText>
         </Pressable>
         {Platform.OS !== "web" ? (
           <Pressable style={styles.galleryLink} onPress={pickImage}>
-            <ThemedText type="small" style={{ color: GREEN }}>Or select from gallery</ThemedText>
+            <ThemedText type="small" style={{ color: GREEN }}>{t("report.orGallery")}</ThemedText>
           </Pressable>
         ) : null}
       </ThemedView>
@@ -429,20 +565,18 @@ export default function ReportIssueScreen() {
       <View style={styles.cameraContainer}>
         <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
         <View style={[styles.cameraOverlay, { paddingTop: headerHeight + Spacing.lg, paddingBottom: insets.bottom + Spacing.xl }]}>
-          <View style={styles.cameraFrame}>
-            <View style={[styles.cameraCorner, styles.topLeft]} />
-            <View style={[styles.cameraCorner, styles.topRight]} />
-            <View style={[styles.cameraCorner, styles.bottomLeft]} />
-            <View style={[styles.cameraCorner, styles.bottomRight]} />
-            <Feather name="crosshair" size={40} color="rgba(88, 204, 2, 0.6)" style={{ position: "absolute", alignSelf: "center", top: "50%", left: "50%", marginTop: -20, marginLeft: -20 }} />
-          </View>
-          <ThemedText type="body" style={styles.cameraHint}>Capture the issue clearly</ThemedText>
+          <View style={{ flex: 1 }} />
+          <ThemedText type="body" style={styles.cameraHint}>{t("report.captureHint")}</ThemedText>
           <View style={styles.cameraControls}>
-            <Pressable style={styles.galleryButton} onPress={pickImage}>
+            <Pressable style={styles.galleryButton} onPress={pickImage} disabled={isAnalyzing}>
               <Feather name="image" size={24} color="#FFFFFF" />
             </Pressable>
-            <Pressable style={styles.captureButton} onPress={takePicture}>
-              <View style={styles.captureButtonInner} />
+            <Pressable style={styles.captureButton} onPress={takePicture} disabled={isAnalyzing}>
+              {isAnalyzing ? (
+                <ActivityIndicator color="#000000" />
+              ) : (
+                <View style={styles.captureButtonInner} />
+              )}
             </Pressable>
             <View style={styles.galleryButton} />
           </View>
@@ -460,10 +594,10 @@ export default function ReportIssueScreen() {
             <Feather name="check" size={48} color="#000000" />
           </View>
         </Animated.View>
-        <ThemedText type="h3" style={{ marginTop: Spacing.xl, textAlign: "center" }}>Report Submitted!</ThemedText>
-        <ThemedText type="body" style={{ color: Colors.light.muted, marginTop: Spacing.md, textAlign: "center" }}>Thank you for helping improve your community. You earned 25 points!</ThemedText>
+        <ThemedText type="h3" style={{ marginTop: Spacing.xl, textAlign: "center" }}>{t("report.reportSubmitted")}</ThemedText>
+        <ThemedText type="body" style={{ color: Colors.light.muted, marginTop: Spacing.md, textAlign: "center" }}>{t("report.thankYou")}</ThemedText>
         <Pressable style={[styles.doneButton, { backgroundColor: GREEN }]} onPress={() => navigation.goBack()}>
-          <ThemedText type="body" style={{ color: "#000000", fontWeight: "700" }}>Done</ThemedText>
+          <ThemedText type="body" style={{ color: "#000000", fontWeight: "700" }}>{t("report.done")}</ThemedText>
         </Pressable>
       </ThemedView>
     );
@@ -473,17 +607,6 @@ export default function ReportIssueScreen() {
   return (
     <ThemedView style={styles.container}>
       <KeyboardAwareScrollViewCompat contentContainerStyle={[styles.formContent, { paddingTop: headerHeight + Spacing.md, paddingBottom: insets.bottom + Spacing.xl }]}>
-
-        {/* ── CivicResolv Header ── */}
-        <Animated.View entering={FadeIn.duration(300)} style={styles.header}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View style={styles.logoIcon}>
-              <Feather name="shield" size={14} color={GREEN} />
-            </View>
-            <ThemedText type="body" style={{ fontWeight: "700", marginLeft: Spacing.sm }}>CivicResolv</ThemedText>
-          </View>
-          <Feather name="bell" size={18} color="#FFFFFF" />
-        </Animated.View>
 
         {/* ── Photo Preview with Location ── */}
         <Animated.View entering={FadeIn.duration(400)}>
@@ -508,10 +631,10 @@ export default function ReportIssueScreen() {
         {/* ── NEW RESOLUTION / Voice Report ── */}
         <Animated.View entering={FadeInUp.delay(80).duration(350)}>
           <ThemedText type="small" style={{ color: GREEN, textTransform: "uppercase", letterSpacing: 2, fontWeight: "600", marginBottom: Spacing.xs }}>
-            New Resolution
+            {t("report.newResolution")}
           </ThemedText>
           <ThemedText type="h2" style={{ fontWeight: "700", marginBottom: Spacing.lg }}>
-            Voice Report
+            {t("report.voiceReport")}
           </ThemedText>
         </Animated.View>
 
@@ -520,7 +643,7 @@ export default function ReportIssueScreen() {
           <View style={styles.card}>
             <View style={styles.recorderHeader}>
               <ThemedText type="small" style={{ color: Colors.light.muted, textTransform: "uppercase", letterSpacing: 1.5, fontSize: 10 }}>
-                Live Stream
+                {t("report.liveStream")}
               </ThemedText>
               <ThemedText type="body" style={{ color: GREEN, fontWeight: "700", fontVariant: ["tabular-nums"] }}>
                 {formatTime(recordingDuration)}
@@ -539,7 +662,7 @@ export default function ReportIssueScreen() {
                 ))}
               </View>
               <ThemedText type="body" style={{ color: isRecording ? "#000000" : "#FFFFFF", fontWeight: "600" }}>
-                {isRecording ? "Stop" : "Record"}
+                {isRecording ? t("report.stop") : t("report.record")}
               </ThemedText>
             </Pressable>
 
@@ -550,7 +673,7 @@ export default function ReportIssueScreen() {
               </ThemedText>
             ) : (
               <ThemedText type="small" style={{ color: Colors.light.muted, fontStyle: "italic", textAlign: "center", marginTop: Spacing.lg }}>
-                Tap record to describe the issue
+                {t("report.tapRecord")}
               </ThemedText>
             )}
 
@@ -562,7 +685,7 @@ export default function ReportIssueScreen() {
               >
                 <Feather name={isPlaying ? "pause" : "play"} size={16} color={GREEN} />
                 <ThemedText type="small" style={{ color: GREEN, fontWeight: "600", marginLeft: Spacing.xs }}>
-                  {isPlaying ? "Pause" : "Replay"} ({formatTime(recordingDuration)})
+                  {isPlaying ? t("report.pause") : t("report.replay")} ({formatTime(recordingDuration)})
                 </ThemedText>
               </Pressable>
             ) : null}
@@ -572,11 +695,11 @@ export default function ReportIssueScreen() {
         {/* ── Description (auto-filled by transcription) ── */}
         <Animated.View entering={FadeInUp.delay(180).duration(350)}>
           <ThemedText type="small" style={{ color: Colors.light.muted, marginBottom: Spacing.sm, fontSize: 11 }}>
-            Description {transcript ? "(auto-filled from voice)" : ""}
+            {t("report.description")} {transcript ? t("report.autoFilled") : ""}
           </ThemedText>
           <TextInput
             style={styles.textInput}
-            placeholder="Description will be auto-filled from voice recording..."
+            placeholder={t("report.descPlaceholder")}
             placeholderTextColor={Colors.light.muted + "80"}
             value={description}
             onChangeText={setDescription}
@@ -590,7 +713,7 @@ export default function ReportIssueScreen() {
             <View style={{ flexDirection: "row", alignItems: "center", marginBottom: Spacing.lg }}>
               <Feather name="grid" size={14} color={Colors.light.muted} />
               <ThemedText type="small" style={{ color: Colors.light.muted, textTransform: "uppercase", letterSpacing: 1.5, fontSize: 10, marginLeft: Spacing.sm }}>
-                Select Category
+                {t("report.selectCategory")}
               </ThemedText>
             </View>
             <View style={styles.categoryChips}>
@@ -605,7 +728,7 @@ export default function ReportIssueScreen() {
                   >
                     {isSelected ? <Feather name={cat.icon as any} size={14} color={catColor} style={{ marginRight: Spacing.xs }} /> : null}
                     <ThemedText type="small" style={{ color: isSelected ? catColor : Colors.light.muted, fontWeight: isSelected ? "600" : "400" }}>
-                      {cat.label}
+                      {t(`report.cat${cat.id.charAt(0).toUpperCase() + cat.id.slice(1)}`)}
                     </ThemedText>
                   </Pressable>
                 );
@@ -627,7 +750,7 @@ export default function ReportIssueScreen() {
             >
               <Feather name="alert-triangle" size={20} color={GREEN} />
               <ThemedText type="small" style={{ color: Colors.light.muted, textTransform: "uppercase", letterSpacing: 1, fontSize: 9, marginTop: Spacing.sm }}>
-                Urgency
+                {t("report.urgency")}
               </ThemedText>
               <ThemedText type="body" style={{ fontWeight: "700", marginTop: Spacing.xs, color: "#FFFFFF" }}>
                 {urgency}
@@ -644,7 +767,7 @@ export default function ReportIssueScreen() {
             >
               <Feather name="eye" size={20} color="#3B82F6" />
               <ThemedText type="small" style={{ color: Colors.light.muted, textTransform: "uppercase", letterSpacing: 1, fontSize: 9, marginTop: Spacing.sm }}>
-                Privacy
+                {t("report.privacy")}
               </ThemedText>
               <ThemedText type="body" style={{ fontWeight: "700", marginTop: Spacing.xs, color: "#FFFFFF" }}>
                 {privacy}
@@ -664,13 +787,23 @@ export default function ReportIssueScreen() {
               <ActivityIndicator color="#000000" />
             ) : (
               <ThemedText type="body" style={{ color: "#000000", fontWeight: "700", fontSize: 16 }}>
-                Submit Resolution
+                {t("report.submit")}
               </ThemedText>
             )}
           </Pressable>
         </Animated.View>
 
       </KeyboardAwareScrollViewCompat>
+
+      {/* ── Analyzing Overlay ── */}
+      {isAnalyzing && (
+        <View style={styles.analyzingOverlay}>
+          <ActivityIndicator size="large" color={GREEN} />
+          <ThemedText style={{ color: "#FFFFFF", marginTop: Spacing.md, fontWeight: "600" }}>
+            {analyzingWords[analyzingWordIndex]}
+          </ThemedText>
+        </View>
+      )}
     </ThemedView>
   );
 }
@@ -736,11 +869,18 @@ const styles = StyleSheet.create({
   topRight: { top: 0, right: 0, borderTopWidth: 3, borderRightWidth: 3, borderTopRightRadius: 12 },
   bottomLeft: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3, borderBottomLeftRadius: 12 },
   bottomRight: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3, borderBottomRightRadius: 12 },
-  cameraHint: { color: "rgba(255,255,255,0.8)", textAlign: "center" },
+  cameraHint: { color: "rgba(255,255,255,0.8)", textAlign: "center", paddingBottom: 15 },
   cameraControls: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", width: "100%" },
   galleryButton: { width: 50, height: 50, borderRadius: 25, backgroundColor: "rgba(255,255,255,0.15)", alignItems: "center", justifyContent: "center" },
   captureButton: { width: 80, height: 80, borderRadius: 40, backgroundColor: GREEN, alignItems: "center", justifyContent: "center", borderWidth: 4, borderColor: "#FFFFFF" },
   captureButtonInner: { width: 60, height: 60, borderRadius: 30, backgroundColor: GREEN },
+  analyzingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 10,
+  },
 
   // Success
   successIcon: { width: 100, height: 100, borderRadius: 50, overflow: "hidden" },

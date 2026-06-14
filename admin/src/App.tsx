@@ -6,6 +6,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import UsersPage from './pages/UsersPage';
+import CitizensPage from './pages/CitizensPage';
 import DepartmentsPage from './pages/DepartmentsPage';
 import ResolversPage from './pages/ResolversPage';
 import IssuesPage from './pages/IssuesPage';
@@ -79,6 +80,7 @@ const AppRoutes: React.FC = () => {
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="issues" element={<IssuesPage />} />
         <Route path="users" element={<UsersPage />} />
+        <Route path="citizens" element={<CitizensPage />} />
         <Route path="departments" element={<DepartmentsPage />} />
         <Route path="resolvers" element={<ResolversPage />} />
       </Route>

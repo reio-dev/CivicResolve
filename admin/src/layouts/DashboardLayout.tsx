@@ -22,7 +22,8 @@ import { useAuth } from '../hooks/useAuth';
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Issues', href: '/issues', icon: AlertCircle },
-  { name: 'Users', href: '/users', icon: Users },
+  { name: 'Citizens', href: '/citizens', icon: Users },
+  { name: 'Admin Users', href: '/users', icon: UserCog },
   { name: 'Departments', href: '/departments', icon: Building2 },
   { name: 'Resolvers', href: '/resolvers', icon: UserCog },
 ];
@@ -53,14 +54,14 @@ const DashboardLayout: React.FC = () => {
   };
 
   return (
-    <div className={cn("min-h-screen", darkMode ? "bg-gray-900" : "bg-gray-50")}>
+    <div className={cn("min-h-screen text-gray-900 dark:text-gray-100", darkMode ? "bg-black" : "bg-gray-50")}>
       <motion.aside
         initial={false}
         animate={{ width: sidebarOpen ? 256 : 72 }}
         transition={{ duration: 0.3, ease: 'easeInOut' }}
-        className={cn("fixed left-0 top-0 z-40 h-screen border-r overflow-hidden", darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200")}
+        className={cn("fixed left-0 top-0 z-40 h-screen border-r overflow-hidden", darkMode ? "bg-[#0a0a0a] border-zinc-900" : "bg-white border-gray-200")}
       >
-        <div className={cn("flex h-16 items-center justify-between px-4 border-b", darkMode ? "border-gray-700" : "border-gray-100")}>
+        <div className={cn("flex h-16 items-center justify-between px-4 border-b", darkMode ? "border-zinc-900" : "border-gray-100")}>
           <AnimatePresence mode="wait">
             {sidebarOpen && (
               <motion.div
@@ -70,7 +71,7 @@ const DashboardLayout: React.FC = () => {
                 transition={{ duration: 0.2 }}
                 className="flex items-center gap-2"
               >
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+                <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center">
                   <AlertCircle className="h-5 w-5 text-white" />
                 </div>
                 <span className={cn("font-bold text-lg", darkMode ? "text-white" : "text-gray-900")}>CivicResolv</span>
@@ -79,7 +80,7 @@ const DashboardLayout: React.FC = () => {
           </AnimatePresence>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className={cn("p-2 rounded-lg transition-colors", darkMode ? "hover:bg-gray-700 text-gray-400" : "hover:bg-gray-100 text-gray-500")}
+            className={cn("p-2 rounded-lg transition-colors", darkMode ? "hover:bg-zinc-900 text-gray-400" : "hover:bg-gray-100 text-gray-500")}
           >
             {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -95,11 +96,11 @@ const DashboardLayout: React.FC = () => {
                 className={cn(
                   'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200',
                   isActive
-                    ? darkMode ? 'bg-gradient-to-r from-blue-900/50 to-purple-900/50 text-blue-400' : 'bg-gradient-to-r from-blue-50 to-purple-50 text-blue-700'
-                    : darkMode ? 'text-gray-400 hover:bg-gray-700 hover:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    ? darkMode ? 'bg-green-950/30 text-green-400' : 'bg-green-50 text-green-700'
+                    : darkMode ? 'text-gray-400 hover:bg-zinc-900 hover:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                 )}
               >
-                <item.icon className={cn('h-5 w-5 flex-shrink-0', isActive && (darkMode ? 'text-blue-400' : 'text-blue-600'))} />
+                <item.icon className={cn('h-5 w-5 flex-shrink-0', isActive && (darkMode ? 'text-green-400' : 'text-green-600'))} />
                 <AnimatePresence mode="wait">
                   {sidebarOpen && (
                     <motion.span
@@ -125,7 +126,7 @@ const DashboardLayout: React.FC = () => {
         transition={{ duration: 0.3, ease: 'easeInOut' }}
         className="min-h-screen"
       >
-        <header className={cn("sticky top-0 z-30 flex h-16 items-center justify-between border-b px-6", darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200")}>
+        <header className={cn("sticky top-0 z-30 flex h-16 items-center justify-between border-b px-6", darkMode ? "bg-[#0a0a0a] border-zinc-900" : "bg-white border-gray-200")}>
           <div>
             <h1 className={cn("text-lg font-semibold", darkMode ? "text-white" : "text-gray-900")}>
               {navigation.find((n) => n.href === location.pathname)?.name || 'Admin Panel'}
@@ -135,11 +136,11 @@ const DashboardLayout: React.FC = () => {
           <div className="flex items-center gap-4">
             <button
               onClick={() => setDarkMode(!darkMode)}
-              className={cn("p-2 rounded-lg transition-colors", darkMode ? "text-yellow-400 hover:bg-gray-700" : "text-gray-500 hover:text-gray-700 hover:bg-gray-100")}
+              className={cn("p-2 rounded-lg transition-colors", darkMode ? "text-yellow-400 hover:bg-zinc-900" : "text-gray-500 hover:text-gray-700 hover:bg-gray-100")}
             >
               {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
             </button>
-            <button className={cn("p-2 rounded-lg transition-colors relative", darkMode ? "text-gray-400 hover:bg-gray-700" : "text-gray-500 hover:text-gray-700 hover:bg-gray-100")}>
+            <button className={cn("p-2 rounded-lg transition-colors relative", darkMode ? "text-gray-400 hover:bg-zinc-900" : "text-gray-500 hover:text-gray-700 hover:bg-gray-100")}>
               <Bell className="h-5 w-5" />
               <span className="absolute top-1 right-1 h-2 w-2 bg-red-500 rounded-full" />
             </button>
@@ -149,7 +150,7 @@ const DashboardLayout: React.FC = () => {
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
                 className={cn("flex items-center gap-2 p-2 rounded-lg transition-colors", darkMode ? "hover:bg-gray-700" : "hover:bg-gray-100")}
               >
-                <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
                   {user?.name?.charAt(0)?.toUpperCase() || 'A'}
                 </div>
                 <span className={cn("text-sm font-medium hidden sm:block", darkMode ? "text-gray-300" : "text-gray-700")}>
@@ -165,15 +166,15 @@ const DashboardLayout: React.FC = () => {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.15 }}
-                    className={cn("absolute right-0 mt-2 w-48 rounded-lg shadow-lg border py-1 z-50", darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200")}
+                    className={cn("absolute right-0 mt-2 w-48 rounded-lg shadow-lg border py-1 z-50", darkMode ? "bg-[#0a0a0a] border-zinc-900" : "bg-white border-gray-200")}
                   >
-                    <div className={cn("px-4 py-2 border-b", darkMode ? "border-gray-700" : "border-gray-100")}>
+                    <div className={cn("px-4 py-2 border-b", darkMode ? "border-zinc-900" : "border-gray-100")}>
                       <p className={cn("text-sm font-medium", darkMode ? "text-white" : "text-gray-900")}>{user?.name}</p>
-                      <p className={cn("text-xs", darkMode ? "text-gray-400" : "text-gray-500")}>@{user?.username}</p>
+                      <p className={cn("text-xs", darkMode ? "text-zinc-400" : "text-gray-500")}>@{user?.username}</p>
                     </div>
                     <button
                       onClick={() => {}}
-                      className={cn("w-full flex items-center gap-2 px-4 py-2 text-sm", darkMode ? "text-gray-300 hover:bg-gray-700" : "text-gray-700 hover:bg-gray-50")}
+                      className={cn("w-full flex items-center gap-2 px-4 py-2 text-sm", darkMode ? "text-zinc-300 hover:bg-zinc-900" : "text-gray-700 hover:bg-gray-50")}
                     >
                       <Settings className="h-4 w-4" />
                       Settings

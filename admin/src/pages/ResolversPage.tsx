@@ -12,6 +12,7 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
+import Select from '../components/Select';
 
 const resolverSchema = z.object({
   adminUserId: z.string().min(1, 'Admin user is required'),
@@ -166,7 +167,7 @@ const ResolversPage: React.FC = () => {
         const user = getAdminUser(resolver.adminUserId);
         return (
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center text-white font-medium">
+            <div className="w-10 h-10 bg-green-600 rounded-full flex items-center justify-center text-white font-medium">
               {user?.name?.charAt(0)?.toUpperCase() || 'R'}
             </div>
             <div>
@@ -311,8 +312,8 @@ const ResolversPage: React.FC = () => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
-                <TrendingUp className="h-5 w-5 text-purple-600" />
+              <div className="p-2 bg-green-100 dark:bg-green-950/30 rounded-lg">
+                <TrendingUp className="h-5 w-5 text-green-600" />
               </div>
               <div>
                 <div className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -337,36 +338,39 @@ const ResolversPage: React.FC = () => {
                 placeholder="Search resolvers..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-gray-800 dark:text-white"
+                className="w-full pl-10 pr-4 py-2 border border-gray-200/50 dark:border-zinc-800/50 rounded-lg bg-white/50 dark:bg-black/40 backdrop-blur-md text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <Filter className="h-4 w-4 text-gray-500" />
-                <select
+                <Select
                   value={departmentFilter}
                   onChange={(e) => setDepartmentFilter(e.target.value)}
-                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-gray-800 dark:text-white"
-                >
-                  <option value="all">All Departments</option>
-                  {departments.map((dept) => (
-                    <option key={dept.id} value={dept.id}>
-                      {dept.name}
-                    </option>
-                  ))}
-                </select>
+                  options={[
+                    { value: 'all', label: 'All Departments' },
+                    ...departments.map((dept) => ({
+                      value: dept.id,
+                      label: dept.name
+                    }))
+                  ]}
+                  wrapperClassName="w-48"
+                  className="py-2 text-sm"
+                />
               </div>
-              <select
+              <Select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-gray-800 dark:text-white"
-              >
-                <option value="all">All Status</option>
-                <option value="active">Active</option>
-                <option value="busy">Busy</option>
-                <option value="unavailable">Unavailable</option>
-                <option value="inactive">Inactive</option>
-              </select>
+                options={[
+                  { value: 'all', label: 'All Status' },
+                  { value: 'active', label: 'Active' },
+                  { value: 'busy', label: 'Busy' },
+                  { value: 'unavailable', label: 'Unavailable' },
+                  { value: 'inactive', label: 'Inactive' }
+                ]}
+                wrapperClassName="w-36"
+                className="py-2 text-sm"
+              />
             </div>
           </div>
         </CardHeader>
@@ -392,17 +396,15 @@ const ResolversPage: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               Admin User
             </label>
-            <select
+            <Select
               {...register('adminUserId')}
-              className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all"
-            >
-              <option value="">Select admin user</option>
-              {availableUsers.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.name} ({user.email})
-                </option>
-              ))}
-            </select>
+              options={availableUsers.map((user) => ({
+                value: user.id,
+                label: `${user.name} (${user.email})`
+              }))}
+              placeholder="Select admin user"
+              className="py-2.5"
+            />
             {availableUsers.length === 0 && (
               <p className="mt-1.5 text-sm text-amber-600">
                 No available users with resolver role. Create a user with resolver role first.
@@ -448,15 +450,16 @@ const ResolversPage: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               Status
             </label>
-            <select
+            <Select
               {...register('status')}
-              className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all"
-            >
-              <option value="active">Active</option>
-              <option value="busy">Busy</option>
-              <option value="unavailable">Unavailable</option>
-              <option value="inactive">Inactive</option>
-            </select>
+              options={[
+                { value: 'active', label: 'Active' },
+                { value: 'busy', label: 'Busy' },
+                { value: 'unavailable', label: 'Unavailable' },
+                { value: 'inactive', label: 'Inactive' }
+              ]}
+              className="py-2.5"
+            />
           </div>
 
           <div className="flex justify-end gap-3 pt-4">
@@ -483,7 +486,7 @@ const ResolversPage: React.FC = () => {
         {viewingResolver && (
           <div className="space-y-6">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center text-white text-2xl font-bold">
+              <div className="w-16 h-16 bg-green-600 rounded-full flex items-center justify-center text-white text-2xl font-bold">
                 {getAdminUser(viewingResolver.adminUserId)?.name?.charAt(0)?.toUpperCase() || 'R'}
               </div>
               <div>
@@ -564,7 +567,7 @@ const ResolversPage: React.FC = () => {
               <Button variant="outline" onClick={() => setViewingResolver(null)}>
                 Close
               </Button>
-              <select
+              <Select
                 value={viewingResolver.status}
                 onChange={(e) => {
                   updateMutation.mutate({
@@ -573,13 +576,15 @@ const ResolversPage: React.FC = () => {
                   });
                   setViewingResolver({ ...viewingResolver, status: e.target.value });
                 }}
-                className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all dark:bg-gray-800 dark:text-white"
-              >
-                <option value="active">Active</option>
-                <option value="busy">Busy</option>
-                <option value="unavailable">Unavailable</option>
-                <option value="inactive">Inactive</option>
-              </select>
+                options={[
+                  { value: 'active', label: 'Active' },
+                  { value: 'busy', label: 'Busy' },
+                  { value: 'unavailable', label: 'Unavailable' },
+                  { value: 'inactive', label: 'Inactive' }
+                ]}
+                wrapperClassName="w-36"
+                className="py-2 text-sm border-gray-200/50 dark:border-zinc-800/50"
+              />
             </div>
           </div>
         )}

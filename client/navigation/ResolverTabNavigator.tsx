@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, View } from "react-native";
+import { useTranslation } from "react-i18next";
 
 import ResolverDashboardScreen from "@/screens/ResolverDashboardScreen";
 import ResolverHomeScreen from "@/screens/ResolverHomeScreen";
@@ -20,12 +21,14 @@ const Tab = createBottomTabNavigator<ResolverTabParamList>();
 function TabIcon({ name, focused, size }: { name: keyof typeof Feather.glyphMap; focused: boolean; size: number }) {
   return (
     <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Feather name={name} size={size} color={focused ? Colors.light.secondary : Colors.light.tabIconDefault} />
+      <Feather name={name} size={size} color={focused ? Colors.light.primary : Colors.light.tabIconDefault} />
     </View>
   );
 }
 
 export default function ResolverTabNavigator() {
+  const { t } = useTranslation();
+
   return (
     <Tab.Navigator
       initialRouteName="ResolverDashboardTab"
@@ -63,7 +66,7 @@ export default function ResolverTabNavigator() {
         name="ResolverDashboardTab"
         component={ResolverDashboardScreen}
         options={{
-          title: "HOME",
+          title: t("resolverTabs.home"),
           tabBarIcon: ({ focused, size }) => (
             <TabIcon name="home" focused={focused} size={size} />
           ),
@@ -73,7 +76,7 @@ export default function ResolverTabNavigator() {
         name="ResolverAssignmentsTab"
         component={ResolverHomeScreen}
         options={{
-          title: "MAP",
+          title: t("resolverTabs.map"),
           tabBarIcon: ({ focused, size }) => (
             <TabIcon name="map" focused={focused} size={size} />
           ),
@@ -83,7 +86,7 @@ export default function ResolverTabNavigator() {
         name="ResolverProfileTab"
         component={ResolverProfileScreen}
         options={{
-          title: "PROFILE",
+          title: t("resolverTabs.profile"),
           tabBarIcon: ({ focused, size }) => (
             <TabIcon name="user" focused={focused} size={size} />
           ),

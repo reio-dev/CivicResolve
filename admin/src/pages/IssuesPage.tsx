@@ -30,6 +30,7 @@ import { Card, CardContent, CardHeader } from '../components/Card';
 import Button from '../components/Button';
 import Modal from '../components/Modal';
 import Badge, { getStatusBadgeVariant, getPriorityBadgeVariant } from '../components/Badge';
+import Select from '../components/Select';
 
 const statusOptions = [
   { value: 'all', label: 'All Status' },
@@ -282,7 +283,7 @@ const IssuesPage: React.FC = () => {
                 e.stopPropagation();
                 setAssigningIssue(issue);
               }}
-              className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors"
+              className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg transition-colors"
               title="Assign Resolver"
             >
               <UserCheck className="h-4 w-4" />
@@ -444,46 +445,34 @@ const IssuesPage: React.FC = () => {
                 placeholder="Search issues by title..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                className="w-full pl-10 pr-4 py-2 border border-gray-200/50 dark:border-zinc-800/50 rounded-lg bg-white/50 dark:bg-black/40 backdrop-blur-md text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2">
                 <Filter className="h-4 w-4 text-gray-500 dark:text-gray-400" />
-                <select
+                <Select
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
-                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                >
-                  {statusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  options={statusOptions}
+                  wrapperClassName="w-36"
+                  className="py-2"
+                />
               </div>
-              <select
+              <Select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-              >
-                {categoryOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-              <select
+                options={categoryOptions}
+                wrapperClassName="w-36"
+                className="py-2"
+              />
+              <Select
                 value={priorityFilter}
                 onChange={(e) => setPriorityFilter(e.target.value)}
-                className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-              >
-                {priorityOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                options={priorityOptions}
+                wrapperClassName="w-36"
+                className="py-2"
+              />
             </div>
           </div>
         </CardHeader>
@@ -509,7 +498,7 @@ const IssuesPage: React.FC = () => {
         size="xl"
       >
         {viewingIssue && (
-          <div className="space-y-6 max-h-[70vh] overflow-y-auto">
+          <div className="space-y-6 max-h-[70vh] overflow-y-auto scrollbar-hide">
             <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
               <div>
                 <h3 className="text-xl font-semibold text-gray-900 dark:text-white">
@@ -535,18 +524,19 @@ const IssuesPage: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Update Status
                 </label>
-                <select
+                <Select
                   value={viewingIssue.status}
                   onChange={(e) => handleStatusChange(viewingIssue, e.target.value)}
                   disabled={updateStatusMutation.isPending}
-                  className="border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-                >
-                  <option value="reported">Reported</option>
-                  <option value="verified">Verified</option>
-                  <option value="assigned">Assigned</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="resolved">Resolved</option>
-                </select>
+                  options={[
+                    { value: 'reported', label: 'Reported' },
+                    { value: 'verified', label: 'Verified' },
+                    { value: 'assigned', label: 'Assigned' },
+                    { value: 'in_progress', label: 'In Progress' },
+                    { value: 'resolved', label: 'Resolved' },
+                  ]}
+                  className="w-48 py-2"
+                />
               </div>
             </div>
 
@@ -650,8 +640,8 @@ const IssuesPage: React.FC = () => {
                       <User className="h-4 w-4" />
                       Assignment
                     </h4>
-                    <div className="p-3 bg-purple-50 dark:bg-purple-900/30 rounded-lg">
-                      <p className="text-sm text-purple-800 dark:text-purple-300">
+                    <div className="p-3 bg-green-50 dark:bg-green-950/30 rounded-lg">
+                      <p className="text-sm text-green-800 dark:text-green-300">
                         Assigned to Department: {viewingIssue.assignedDepartment}
                       </p>
                     </div>
@@ -841,24 +831,20 @@ const IssuesPage: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                 Select Resolver
               </label>
-              <select
+              <Select
                 value={selectedResolverId}
                 onChange={(e) => setSelectedResolverId(e.target.value)}
-                className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all"
-              >
-                <option value="">Choose a resolver...</option>
-                {availableResolvers.map((resolver: Resolver) => {
+                placeholder="Choose a resolver..."
+                options={availableResolvers.map((resolver: Resolver) => {
                   const adminUser = adminUsers.find(
                     (u: AdminUser) => u.id === resolver.adminUserId
                   );
-                  return (
-                    <option key={resolver.id} value={resolver.id}>
-                      {adminUser?.name || 'Unknown'} ({resolver.currentLoad} current
-                      issues)
-                    </option>
-                  );
+                  return {
+                    value: resolver.id,
+                    label: `${adminUser?.name || 'Unknown'} (${resolver.currentLoad} current issues)`
+                  };
                 })}
-              </select>
+              />
               {availableResolvers.length === 0 && (
                 <p className="mt-1.5 text-sm text-amber-600">
                   No active resolvers available. Please add resolvers first.

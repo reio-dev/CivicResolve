@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE = '/api';
+// Use VITE_API_URL for production, fallback to /api for local dev
+const API_BASE = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api';
 
 export const api = axios.create({
   baseURL: API_BASE,
@@ -89,6 +90,8 @@ export interface Resolver {
   rating: number;
   onTimeDelivery: number;
   status: string;
+  latitude?: number | null;
+  longitude?: number | null;
   adminUser?: AdminUser;
 }
 
@@ -118,7 +121,20 @@ export interface DashboardStats {
   activeResolvers: number;
   issuesByCategory: Record<string, number>;
   issuesByStatus: Record<string, number>;
-  recentIssues: Issue[];
+  recentIssues: (Issue & {
+    assignments?: (IssueAssignment & {
+      resolver?: Resolver & {
+        adminUser?: AdminUser;
+      };
+    })[];
+  })[];
+  mapIssues?: (Issue & {
+    assignments?: (IssueAssignment & {
+      resolver?: Resolver & {
+        adminUser?: AdminUser;
+      };
+    })[];
+  })[];
   issuesTrend: { date: string; count: number }[];
 }
 
@@ -152,6 +168,12 @@ export const adminApi = {
 
   deleteAdminUser: (id: string) =>
     api.delete(`/admin/users/${id}`),
+
+  getAppUsers: () =>
+    api.get<any[]>('/admin/app-users'),
+
+  addCredits: (userId: string, amount: number) =>
+    api.post<{ message: string, credits: number }>(`/admin/users/${userId}/credits`, { amount }),
 
   getResolvers: () =>
     api.get<Resolver[]>('/admin/resolvers'),

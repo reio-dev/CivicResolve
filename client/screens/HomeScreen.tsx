@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   StyleSheet,
@@ -7,17 +7,21 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
+import { getUnreadCount } from "@/lib/local-notifications";
+import * as Notifications from "expo-notifications";
 
 import { ThemedText } from "@/components/ThemedText";
+import { MapcnView } from "@/components/MapcnView";
 import { ThemedView } from "@/components/ThemedView";
 import { useAuth } from "@/hooks/useAuth";
 import { Colors, Spacing, BorderRadius } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
+import { useTranslation } from "react-i18next";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -27,9 +31,27 @@ const GREEN = "#58CC02";
 
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const [mapActive, setMapActive] = useState(false);
   const tabBarHeight = useBottomTabBarHeight();
   const navigation = useNavigation<NavigationProp>();
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+
+  // Refresh user data on focus
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshUser();
+    }, [])
+  );
+
+  // Listen for push notifications to update unread count instantly
+  React.useEffect(() => {
+    const subscription = Notifications.addNotificationReceivedListener(() => {
+      queryClient.invalidateQueries({ queryKey: ["unread-count", user?.id] });
+    });
+    return () => subscription.remove();
+  }, [user?.id, queryClient]);
 
   const { data: issues = [] } = useQuery({ queryKey: ["/api/issues"] });
 
@@ -37,6 +59,7 @@ export default function HomeScreen() {
   const allIssues = issues as any[];
   const isRegularUser = user?.role === "user";
   const userPoints = isRegularUser ? (user as any).points ?? 0 : 0;
+  const userCredits = isRegularUser ? (user as any).credits ?? 0 : 0;
   const userLevel = isRegularUser ? (user as any).level ?? 1 : 1;
   const userIssuesResolved = isRegularUser ? (user as any).issuesResolved ?? 0 : 0;
   const userValidations = isRegularUser ? (user as any).validationsGiven ?? 0 : 0;
@@ -48,17 +71,26 @@ export default function HomeScreen() {
   const nextLevelXP = userLevel * 1000;
   const xpProgress = nextLevelXP > 0 ? Math.min(userPoints / nextLevelXP, 1) : 0;
 
-  // Active reports
   const myIssues = allIssues.filter((i: any) => i.reporterId === user?.id);
   const activeReports = myIssues.filter((i: any) => i.status !== "resolved");
   const resolvedCount = myIssues.filter((i: any) => i.status === "resolved").length;
 
+  // Unread notification count (polls every 30s)
+  const { data: unreadCount = 0 } = useQuery({
+    queryKey: ["unread-count", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return 0;
+      return await getUnreadCount();
+    },
+    enabled: !!user?.id,
+  });
+
   // Rank title based on level
   const getRankTitle = (lvl: number) => {
-    if (lvl >= 20) return "MASTER RESOLVER";
-    if (lvl >= 10) return "CIVIC HERO";
-    if (lvl >= 5) return "GUARDIAN";
-    return "CITIZEN";
+    if (lvl >= 20) return t("home.masterResolver");
+    if (lvl >= 10) return t("home.civicHero");
+    if (lvl >= 5) return t("home.guardian");
+    return t("home.citizen");
   };
 
   // Progress fraction per active issue (simulate)
@@ -75,6 +107,7 @@ export default function HomeScreen() {
   return (
     <ThemedView style={styles.container}>
       <ScrollView
+        scrollEnabled={!mapActive}
         contentContainerStyle={[
           styles.scroll,
           { paddingTop: insets.top + Spacing.md, paddingBottom: tabBarHeight + Spacing.xl },
@@ -91,8 +124,18 @@ export default function HomeScreen() {
               CivicResolv
             </ThemedText>
           </View>
-          <Pressable style={styles.bellBtn}>
+          <Pressable
+            style={styles.bellBtn}
+            onPress={() => navigation.navigate("UserNotifications" as any)}
+          >
             <Feather name="bell" size={20} color="#FFFFFF" />
+            {unreadCount > 0 && (
+              <View style={styles.bellBadge}>
+                <ThemedText style={styles.bellBadgeText}>
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </ThemedText>
+              </View>
+            )}
           </Pressable>
         </Animated.View>
 
@@ -108,7 +151,7 @@ export default function HomeScreen() {
                   {displayName}
                 </ThemedText>
                 <ThemedText type="small" style={{ color: GREEN, fontWeight: "600", marginTop: 2, letterSpacing: 1 }}>
-                  {getRankTitle(userLevel)} • LVL {userLevel}
+                  {getRankTitle(userLevel)} • {t("home.lvl")} {userLevel}
                 </ThemedText>
               </View>
             </View>
@@ -124,17 +167,20 @@ export default function HomeScreen() {
         {/* ── Credits + Report Row ── */}
         <Animated.View entering={FadeInUp.delay(120).duration(350)}>
           <View style={styles.twoCol}>
-            <View style={[styles.card, styles.creditCard]}>
+            <Pressable
+              style={[styles.card, styles.creditCard]}
+              onPress={() => navigation.navigate("CreditRedeem" as any)}
+            >
               <View style={styles.creditIcon}>
                 <Feather name="credit-card" size={20} color={GREEN} />
               </View>
               <ThemedText type="small" style={{ color: Colors.light.muted, marginTop: Spacing.sm, textTransform: "uppercase", letterSpacing: 1, fontSize: 10 }}>
-                Credits
+                {t("home.credits")}
               </ThemedText>
               <ThemedText type="h2" style={{ fontWeight: "700", marginTop: Spacing.xs }}>
-                {userPoints}
+                {userCredits}
               </ThemedText>
-            </View>
+            </Pressable>
 
             <Pressable
               style={[styles.reportBtn]}
@@ -142,7 +188,7 @@ export default function HomeScreen() {
             >
               <Feather name="plus-circle" size={32} color="#000000" />
               <ThemedText type="body" style={{ color: "#000000", fontWeight: "700", marginTop: Spacing.sm, textTransform: "uppercase", letterSpacing: 1 }}>
-                Report
+                {t("home.report")}
               </ThemedText>
             </Pressable>
           </View>
@@ -153,14 +199,14 @@ export default function HomeScreen() {
           <View style={styles.card}>
             <View style={styles.sectionHeader}>
               <View>
-                <ThemedText type="h4" style={{ fontWeight: "700" }}>Active</ThemedText>
+                <ThemedText type="h4" style={{ fontWeight: "700" }}>{t("home.active")}</ThemedText>
                 <ThemedText type="small" style={{ color: Colors.light.muted, marginTop: 2 }}>
-                  {activeReports.length} reports in progress
+                  {activeReports.length} {t("home.reportsInProgress")}
                 </ThemedText>
               </View>
               <View style={styles.liveBadge}>
                 <ThemedText type="small" style={{ color: GREEN, fontWeight: "700", fontSize: 10, letterSpacing: 1 }}>
-                  LIVE
+                  {t("home.live")}
                 </ThemedText>
               </View>
             </View>
@@ -176,11 +222,11 @@ export default function HomeScreen() {
                     <Feather
                       name={
                         issue.category === "roads" ? "alert-triangle" :
-                        issue.category === "water" ? "droplet" :
-                        issue.category === "waste" ? "trash-2" :
-                        issue.category === "electricity" ? "zap" :
-                        issue.category === "drainage" ? "cloud-rain" :
-                        "alert-circle"
+                          issue.category === "water" ? "droplet" :
+                            issue.category === "waste" ? "trash-2" :
+                              issue.category === "electricity" ? "zap" :
+                                issue.category === "drainage" ? "cloud-rain" :
+                                  "alert-circle"
                       }
                       size={18}
                       color={Colors.light.muted}
@@ -203,7 +249,7 @@ export default function HomeScreen() {
               <View style={styles.emptyActive}>
                 <Feather name="check-circle" size={32} color={Colors.light.muted} />
                 <ThemedText type="small" style={{ color: Colors.light.muted, marginTop: Spacing.sm }}>
-                  No active reports
+                  {t("home.noActive")}
                 </ThemedText>
               </View>
             )}
@@ -212,32 +258,32 @@ export default function HomeScreen() {
 
         {/* ── Nearby ── */}
         <Animated.View entering={FadeInUp.delay(240).duration(350)}>
-          <View style={styles.card}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <ThemedText type="h4" style={{ fontWeight: "700" }}>Nearby</ThemedText>
-              <Feather name="navigation" size={20} color={GREEN} />
+          <View style={[styles.card, { padding: 5, overflow: 'hidden' }]}>
+            {/* mapcn styled Map */}
+            <View style={[styles.mapArea, { marginTop: 0, height: 300, borderRadius: 18 }]}>
+              <MapcnView
+                theme="dark"
+                zoom={14.7}
+                showsUserLocation={true}
+                onInteract={setMapActive}
+                markers={allIssues.slice(0, 5).map((issue: any) => ({
+                  id: issue.id.toString(),
+                  coordinate: [issue.longitude, issue.latitude],
+                  color: GREEN,
+                  icon: issue.category === "roads" ? "alert-triangle" :
+                    issue.category === "water" ? "droplet" :
+                      issue.category === "waste" ? "trash-2" :
+                        issue.category === "electricity" ? "zap" :
+                          issue.category === "drainage" ? "cloud-rain" :
+                            "alert-circle"
+                }))}
+              />
             </View>
-            {/* Simulated map area */}
-            <View style={styles.mapArea}>
-              <View style={styles.mapGrid}>
-                {[...Array(5)].map((_, i) => (
-                  <View key={`h${i}`} style={[styles.mapLineH, { top: `${(i + 1) * 16.6}%` }]} />
-                ))}
-                {[...Array(5)].map((_, i) => (
-                  <View key={`v${i}`} style={[styles.mapLineV, { left: `${(i + 1) * 16.6}%` }]} />
-                ))}
+            <View pointerEvents="none" style={{ position: "absolute", top: Spacing.xl, left: Spacing.xl, right: Spacing.xl, flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <ThemedText type="h4" style={{ fontWeight: "700", textShadowColor: 'rgba(0, 0, 0, 0.9)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }}>{t("home.nearby")}</ThemedText>
+              <View style={{ backgroundColor: 'rgba(0,0,0,0.5)', padding: 6, borderRadius: 20 }}>
+                <Feather name="navigation" size={20} color={GREEN} />
               </View>
-              {/* Nearby issues as pins */}
-              {allIssues.slice(0, 2).map((issue: any, idx: number) => (
-                <View key={issue.id} style={[styles.nearbyPin, idx === 0 ? { left: 20, bottom: 20 } : { left: 100, bottom: 30 }]}>
-                  <ThemedText type="small" style={{ fontWeight: "600", fontSize: 11 }}>
-                    {issue.title?.split(" ")[0] || "Issue"}
-                  </ThemedText>
-                  <ThemedText type="small" style={{ color: GREEN, fontSize: 10 }}>
-                    {(idx + 1) * 200}m
-                  </ThemedText>
-                </View>
-              ))}
             </View>
           </View>
         </Animated.View>
@@ -250,7 +296,7 @@ export default function HomeScreen() {
                 {resolvedCount > 999 ? `${(resolvedCount / 1000).toFixed(0)}k` : resolvedCount}
               </ThemedText>
               <ThemedText type="small" style={{ color: Colors.light.muted, textTransform: "uppercase", letterSpacing: 1, marginTop: Spacing.xs, fontSize: 10 }}>
-                Resolved
+                {t("home.resolved")}
               </ThemedText>
             </View>
             <View style={[styles.card, styles.statCard]}>
@@ -261,7 +307,7 @@ export default function HomeScreen() {
                 <View style={styles.civicDot} />
               </View>
               <ThemedText type="small" style={{ color: Colors.light.muted, textTransform: "uppercase", letterSpacing: 1, marginTop: Spacing.xs, fontSize: 10 }}>
-                Civics
+                {t("home.civics")}
               </ThemedText>
             </View>
           </View>
@@ -297,6 +343,28 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
+    backgroundColor: CARD_BG,
+    borderWidth: 1,
+    borderColor: CARD_BORDER,
+  },
+  bellBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: Colors.light.backgroundRoot,
+  },
+  bellBadgeText: {
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: "800",
   },
 
   // Cards
@@ -412,7 +480,7 @@ const styles = StyleSheet.create({
 
   // Nearby
   mapArea: {
-    height: 120,
+    height: 250,
     borderRadius: BorderRadius.lg,
     backgroundColor: "#0A0A0A",
     marginTop: Spacing.lg,

@@ -13,6 +13,7 @@ import Button from '../components/Button';
 import Input from '../components/Input';
 import Modal from '../components/Modal';
 import Badge from '../components/Badge';
+import Select from '../components/Select';
 
 const userSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters'),
@@ -163,7 +164,7 @@ const UsersPage: React.FC = () => {
       header: 'Name',
       render: (user: AdminUser) => (
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+          <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
             {user.name.charAt(0).toUpperCase()}
           </div>
           <span className="font-medium text-gray-900 dark:text-white">{user.name}</span>
@@ -262,23 +263,21 @@ const UsersPage: React.FC = () => {
                 placeholder="Search users..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                className="w-full pl-10 pr-4 py-2 border border-gray-200/50 dark:border-zinc-800/50 rounded-lg bg-white/50 dark:bg-black/40 backdrop-blur-md text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-gray-500 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
               />
             </div>
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-gray-500" />
-              <select
+              <Select
                 value={roleFilter}
                 onChange={(e) => setRoleFilter(e.target.value)}
-                className="border border-gray-300 dark:border-gray-600 dark:bg-gray-800 dark:text-white rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
-              >
-                <option value="all">All Roles</option>
-                {roleOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: 'all', label: 'All Roles' },
+                  ...roleOptions
+                ]}
+                wrapperClassName="w-40"
+                className="py-2 text-sm"
+              />
             </div>
           </div>
         </CardHeader>
@@ -330,16 +329,11 @@ const UsersPage: React.FC = () => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               Role
             </label>
-            <select
+            <Select
               {...register('role')}
-              className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all"
-            >
-              {roleOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+              options={roleOptions}
+              className="py-2.5"
+            />
             {errors.role && (
               <p className="mt-1.5 text-sm text-red-600">{errors.role.message}</p>
             )}
@@ -349,30 +343,29 @@ const UsersPage: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
                 Department
               </label>
-              <select
+              <Select
                 {...register('departmentId')}
-                className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all"
-              >
-                <option value="">Select Department</option>
-                {departments.map((dept) => (
-                  <option key={dept.id} value={dept.id}>
-                    {dept.name}
-                  </option>
-                ))}
-              </select>
+                placeholder="Select Department"
+                options={departments.map((dept) => ({
+                  value: dept.id,
+                  label: dept.name
+                }))}
+                className="py-2.5"
+              />
             </div>
           )}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               Status
             </label>
-            <select
+            <Select
               {...register('status')}
-              className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-4 py-2.5 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all"
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
+              options={[
+                { value: 'active', label: 'Active' },
+                { value: 'inactive', label: 'Inactive' }
+              ]}
+              className="py-2.5"
+            />
           </div>
           <div className="flex justify-end gap-3 pt-4">
             <Button type="button" variant="outline" onClick={handleCloseModal}>

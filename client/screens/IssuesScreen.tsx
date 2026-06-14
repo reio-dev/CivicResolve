@@ -26,6 +26,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/query-client";
 import { Colors, Spacing, BorderRadius, StatusColors, CategoryColors } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
+import { useTranslation } from "react-i18next";
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -52,12 +53,15 @@ const CATEGORIES = [
   { id: "other", label: "OTHER", icon: "more-horizontal" as const },
 ];
 
-const STATUS_LABELS: Record<string, string> = {
-  reported: "Reported",
-  verified: "Verified",
-  assigned: "Assigned",
-  inProgress: "In Progress",
-  resolved: "Resolved",
+const getStatusLabel = (status: string, t: any) => {
+  const map: Record<string, string> = {
+    reported: t("issues.statusReported"),
+    verified: t("issues.statusVerified"),
+    assigned: t("issues.statusAssigned"),
+    inProgress: t("issues.statusInProgress"),
+    resolved: t("issues.statusResolved"),
+  };
+  return map[status] || status;
 };
 
 /* ── Utils ── */
@@ -90,6 +94,7 @@ function CategoryChip({
   selected: boolean;
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
   const color = (CategoryColors as any)[cat.id] || GREEN;
   return (
     <Pressable
@@ -101,14 +106,14 @@ function CategoryChip({
     >
       <Feather name={cat.icon} size={14} color={selected ? color : MUTED} />
       <ThemedText style={[styles.categoryChipText, { color: selected ? color : MUTED }]}>
-        {cat.label}
+        {cat.label === "ALL" ? "ALL" : cat.id === "all" ? "ALL" : cat.id ? t(`report.cat${cat.id.charAt(0).toUpperCase() + cat.id.slice(1)}`).toUpperCase() : cat.label}
       </ThemedText>
     </Pressable>
   );
 }
 
-/* ── My Issues Card ── */
 function IssueCard({ issue, onPress, index }: { issue: any; onPress: () => void; index: number }) {
+  const { t } = useTranslation();
   const statusColor = (StatusColors as any)[issue.status] || GREEN;
   const categoryColor = (CategoryColors as any)[issue.category] || GREEN;
   const priorityColor =
@@ -142,7 +147,7 @@ function IssueCard({ issue, onPress, index }: { issue: any; onPress: () => void;
             <View style={[styles.statusPill, { backgroundColor: statusColor + "20" }]}>
               <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
               <ThemedText style={[styles.statusPillText, { color: statusColor }]}>
-                {STATUS_LABELS[issue.status] || issue.status}
+                {getStatusLabel(issue.status, t)}
               </ThemedText>
             </View>
           </View>
@@ -183,6 +188,7 @@ function AllIssuesValidationView({
   const { user, refreshUser } = useAuth();
   const queryClient = useQueryClient();
   const navigation = useNavigation<NavigationProp>();
+  const { t } = useTranslation();
 
   const { data: userValidations } = useQuery({
     queryKey: [`/api/users/${user?.id}/validations`],
@@ -238,18 +244,20 @@ function AllIssuesValidationView({
         <View style={styles.emptyIcon}>
           <Feather name="check-circle" size={48} color={GREEN} />
         </View>
-        <ThemedText style={styles.emptyTitle}>All caught up!</ThemedText>
-        <ThemedText style={styles.emptySubtitle}>No issues need your validation right now.</ThemedText>
+        <ThemedText style={styles.emptyTitle}>{t("issues.allCaughtUp")}</ThemedText>
+        <ThemedText style={styles.emptySubtitle}>{t("issues.noIssuesValidation")}</ThemedText>
       </View>
     );
   }
 
   const distanceText =
     userLocation && currentIssue.latitude && currentIssue.longitude
-      ? `${getDistance(userLocation.latitude, userLocation.longitude, currentIssue.latitude, currentIssue.longitude).toFixed(1)} km away`
-      : "Nearby";
+      ? `${getDistance(userLocation.latitude, userLocation.longitude, currentIssue.latitude, currentIssue.longitude).toFixed(1)} ${t("issues.kmAway")}`
+      : t("issues.nearby");
 
-  const reporterLabel = `Citizen Reporter #${String(currentIssue.reporterId || currentIssue.id).padStart(4, "0")}`;
+  const reporterIdStr = String(currentIssue.reporterId || currentIssue.id);
+  const displayId = reporterIdStr.includes("-") ? reporterIdStr.substring(0, 8) : reporterIdStr.padStart(4, "0");
+  const reporterLabel = `${t("issues.citizenReporter")} #${displayId}`;
 
   return (
     <Animated.View
@@ -283,14 +291,14 @@ function AllIssuesValidationView({
         <View style={styles.infoPill}>
           <Feather name="map-pin" size={16} color={GREEN} />
           <View style={{ marginLeft: 8, flex: 1 }}>
-            <ThemedText style={styles.infoPillLabel}>LOCATION</ThemedText>
+            <ThemedText style={styles.infoPillLabel}>{t("issues.location")}</ThemedText>
             <ThemedText style={styles.infoPillValue} numberOfLines={1}>{currentIssue.address || distanceText}</ThemedText>
           </View>
         </View>
         <View style={styles.infoPill}>
           <Feather name="clock" size={16} color="#3B82F6" />
           <View style={{ marginLeft: 8 }}>
-            <ThemedText style={styles.infoPillLabel}>REPORTED</ThemedText>
+            <ThemedText style={styles.infoPillLabel}>{t("issues.reported")}</ThemedText>
             <ThemedText style={styles.infoPillValue}>{timeAgo(currentIssue.createdAt)}</ThemedText>
           </View>
         </View>
@@ -304,7 +312,7 @@ function AllIssuesValidationView({
           </View>
           <ThemedText style={styles.reporterName}>{reporterLabel}</ThemedText>
         </View>
-        <ThemedText style={styles.descText} numberOfLines={5}>{currentIssue.description}</ThemedText>
+        <ThemedText style={styles.descText} numberOfLines={3}>{currentIssue.description}</ThemedText>
       </View>
 
       {/* Counter */}
@@ -335,7 +343,7 @@ function AllIssuesValidationView({
         </Pressable>
       </View>
 
-      <ThemedText style={styles.verifyLabel}>VERIFY</ThemedText>
+      <ThemedText style={styles.verifyLabel}>{t("issues.verify")}</ThemedText>
     </Animated.View>
   );
 }
@@ -354,6 +362,7 @@ export default function IssuesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [localValidatedIds, setLocalValidatedIds] = useState<Set<string>>(new Set());
+  const { t } = useTranslation();
 
   // Get user location for proximity sorting
   useEffect(() => {
@@ -396,9 +405,9 @@ export default function IssuesScreen() {
     <ThemedView style={[styles.container, { backgroundColor: BG }]}>
       {/* ── Header ── */}
       <Animated.View entering={FadeIn.duration(400)} style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <ThemedText style={styles.headerLabel}>CITIZEN DASHBOARD</ThemedText>
+        <ThemedText style={styles.headerLabel}>{t("issues.citizenDashboard")}</ThemedText>
         <View style={styles.headerTitleRow}>
-          <ThemedText style={styles.headerTitle}>Browse Issues</ThemedText>
+          <ThemedText style={styles.headerTitle}>{t("issues.browseIssues")}</ThemedText>
           <Pressable style={styles.filterButton} onPress={() => setShowFilters(true)}>
             <Feather name="filter" size={20} color={selectedCategory ? GREEN : TEXT} />
             {selectedCategory && <View style={styles.filterActiveDot} />}
@@ -408,10 +417,10 @@ export default function IssuesScreen() {
         {/* Toggle tabs */}
         <View style={styles.toggleRow}>
           <Pressable style={[styles.toggleTab, tab === "all" && styles.toggleTabActive]} onPress={() => setTab("all")}>
-            <ThemedText style={[styles.toggleTabText, tab === "all" && styles.toggleTabTextActive]}>All Issues</ThemedText>
+            <ThemedText style={[styles.toggleTabText, tab === "all" && styles.toggleTabTextActive]}>{t("issues.allIssues")}</ThemedText>
           </Pressable>
           <Pressable style={[styles.toggleTab, tab === "my" && styles.toggleTabActive]} onPress={() => setTab("my")}>
-            <ThemedText style={[styles.toggleTabText, tab === "my" && styles.toggleTabTextActive]}>My Issues</ThemedText>
+            <ThemedText style={[styles.toggleTabText, tab === "my" && styles.toggleTabTextActive]}>{t("issues.myIssues")}</ThemedText>
           </Pressable>
         </View>
       </Animated.View>
@@ -421,7 +430,7 @@ export default function IssuesScreen() {
         <Pressable style={styles.modalBackdrop} onPress={() => setShowFilters(false)}>
           <View style={styles.modalContent} onStartShouldSetResponder={() => true}>
             <View style={styles.modalHeader}>
-              <ThemedText style={styles.modalTitle}>Filter by Category</ThemedText>
+              <ThemedText style={styles.modalTitle}>{t("issues.filterCategory")}</ThemedText>
               <Pressable onPress={() => setShowFilters(false)} style={styles.modalCloseBtn}>
                 <Feather name="x" size={24} color={MUTED} />
               </Pressable>
@@ -468,8 +477,8 @@ export default function IssuesScreen() {
           ListEmptyComponent={
             <View style={styles.validationEmpty}>
               <Feather name="inbox" size={48} color="#333" />
-              <ThemedText style={styles.emptyTitle}>No issues found</ThemedText>
-              <ThemedText style={styles.emptySubtitle}>You haven't reported any issues yet</ThemedText>
+              <ThemedText style={styles.emptyTitle}>{t("issues.noIssuesFound")}</ThemedText>
+              <ThemedText style={styles.emptySubtitle}>{t("issues.noIssuesReported")}</ThemedText>
             </View>
           }
         />
@@ -541,7 +550,7 @@ const styles = StyleSheet.create({
     borderColor: DARK_CARD_BORDER,
     overflow: "hidden",
   },
-  valImageWrap: { height: "38%", minHeight: 180 },
+  valImageWrap: { height: "30%", minHeight: 140, maxHeight: 180 },
   valImage: { width: "100%", height: "100%" },
   criticalBadge: {
     position: "absolute", top: 16, left: 16,
@@ -565,7 +574,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 16, backgroundColor: "#111827",
     borderRadius: 16, padding: 16,
     borderWidth: 1, borderColor: "#1F2937",
-    flex: 1, minHeight: 80,
+    flex: 1, minHeight: 80, maxHeight: 160,
   },
   reporterRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 },
   reporterAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: GREEN + "20", alignItems: "center", justifyContent: "center" },

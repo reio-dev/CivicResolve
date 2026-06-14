@@ -29,6 +29,12 @@ import {
   type InsertResolver,
   type IssueAssignment,
   type InsertIssueAssignment,
+  redemptions,
+  type Redemption,
+  type InsertRedemption,
+  creditAllocations,
+  type CreditAllocation,
+  type InsertCreditAllocation,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, or, sql, count } from "drizzle-orm";
@@ -38,11 +44,19 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUserPoints(userId: string, points: number): Promise<User | undefined>;
+  updateUserCredits(userId: string, credits: number): Promise<User | undefined>;
   incrementUserStat(
     userId: string,
     stat: "issuesReported" | "issuesResolved" | "validationsGiven",
   ): Promise<void>;
+  updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined>;
   getLeaderboard(limit?: number): Promise<User[]>;
+
+  getUserRedemptions(userId: string): Promise<Redemption[]>;
+  createRedemption(userId: string, amount: number, couponCode: string, expiresAt: Date): Promise<Redemption>;
+
+  getUserCreditAllocations(userId: string): Promise<CreditAllocation[]>;
+  createCreditAllocation(userId: string, amount: number, reason: string): Promise<CreditAllocation>;
 
   getIssue(id: string): Promise<Issue | undefined>;
   getIssues(limit?: number): Promise<Issue[]>;
@@ -86,6 +100,14 @@ export interface IStorage {
   getUserBadges(userId: string): Promise<UserBadge[]>;
   awardBadge(userId: string, badgeId: string): Promise<UserBadge>;
   getResolverDashboardData(adminUserId: string): Promise<any>;
+
+  updateAdminUserPushToken(id: string, pushToken: string): Promise<void>;
+  updateUserPushToken(id: string, pushToken: string): Promise<void>;
+  findNearestResolver(issueCategory: string, issueLat: number, issueLng: number): Promise<{ resolver: Resolver; adminUser: AdminUser } | null>;
+  
+  // High-level Notification Helpers (Push only)
+  notifyUserOfStatusChange(issue: any, newStatus: string): Promise<void>;
+  notifyUserOfCredits(userId: string, amount: number, reason: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -107,15 +129,63 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined> {
+    const [user] = await db
+      .update(users)
+      .set(data)
+      .where(eq(users.id, id))
+      .returning();
+    return user || undefined;
+  }
+
   async updateUserPoints(
     userId: string,
     points: number,
+    reason?: string
+  ): Promise<User | undefined> {
+    const userToUpdate = await this.getUser(userId);
+    if (!userToUpdate) return undefined;
+
+    const newPoints = userToUpdate.points + points;
+    const newLevel = Math.floor(newPoints / 1000) + 1;
+    
+    const updateData: any = { 
+      points: newPoints,
+      level: newLevel,
+    };
+    if (points > 0) {
+      updateData.credits = sql`${users.credits} + ${points}`;
+    }
+
+    const [updatedUser] = await db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (updatedUser && points > 0) {
+      await this.createCreditAllocation(userId, points, reason || "Points Earned");
+      await this.notifyUserOfCredits(userId, points, reason || "Reward for participation");
+    }
+
+    return updatedUser || undefined;
+  }
+
+  async updateUserCredits(
+    userId: string,
+    credits: number,
+    reason?: string
   ): Promise<User | undefined> {
     const [user] = await db
       .update(users)
-      .set({ points: sql`${users.points} + ${points}` })
+      .set({ credits: sql`${users.credits} + ${credits}` })
       .where(eq(users.id, userId))
       .returning();
+
+    if (user && credits > 0) {
+      await this.createCreditAllocation(userId, credits, reason || "Credits Added");
+    }
+
     return user || undefined;
   }
 
@@ -131,6 +201,38 @@ export class DatabaseStorage implements IStorage {
 
   async getLeaderboard(limit = 10): Promise<User[]> {
     return db.select().from(users).orderBy(desc(users.points)).limit(limit);
+  }
+
+  async getUserRedemptions(userId: string): Promise<Redemption[]> {
+    return db
+      .select()
+      .from(redemptions)
+      .where(eq(redemptions.userId, userId))
+      .orderBy(desc(redemptions.createdAt));
+  }
+
+  async createRedemption(userId: string, amount: number, couponCode: string, expiresAt: Date): Promise<Redemption> {
+    const [redemption] = await db
+      .insert(redemptions)
+      .values({ userId, amount, couponCode, expiresAt })
+      .returning();
+    return redemption;
+  }
+
+  async getUserCreditAllocations(userId: string): Promise<CreditAllocation[]> {
+    return db
+      .select()
+      .from(creditAllocations)
+      .where(eq(creditAllocations.userId, userId))
+      .orderBy(desc(creditAllocations.createdAt));
+  }
+
+  async createCreditAllocation(userId: string, amount: number, reason: string): Promise<CreditAllocation> {
+    const [allocation] = await db
+      .insert(creditAllocations)
+      .values({ userId, amount, reason })
+      .returning();
+    return allocation;
   }
 
   async getIssue(id: string): Promise<Issue | undefined> {
@@ -574,6 +676,7 @@ export class DatabaseStorage implements IStorage {
     issuesByCategory: Record<string, number>;
     issuesByStatus: Record<string, number>;
     recentIssues: Issue[];
+    mapIssues: Issue[];
     issuesTrend: { date: string; count: number }[];
   }> {
     const [totalIssuesResult] = await db.select({ count: count() }).from(issues);
@@ -587,7 +690,20 @@ export class DatabaseStorage implements IStorage {
     const resolvedIssues = resolvedResult.count;
     const resolutionRate = totalIssues > 0 ? (resolvedIssues / totalIssues) * 100 : 0;
 
-    const allIssues = await db.select().from(issues);
+    const allIssues = await db.query.issues.findMany({
+      with: {
+        assignments: {
+          with: {
+            resolver: {
+              with: {
+                adminUser: true
+              }
+            }
+          }
+        }
+      }
+    });
+
     const issuesByCategory: Record<string, number> = {};
     const issuesByStatus: Record<string, number> = {};
     
@@ -596,7 +712,9 @@ export class DatabaseStorage implements IStorage {
       issuesByStatus[issue.status] = (issuesByStatus[issue.status] || 0) + 1;
     }
 
-    const recentIssues = await db.select().from(issues).orderBy(desc(issues.createdAt)).limit(5);
+    const sortedIssues = [...allIssues].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    const recentIssues = sortedIssues.slice(0, 5);
+    const mapIssues = allIssues.filter(i => i.status !== 'resolved' && i.status !== 'closed');
 
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -613,16 +731,25 @@ export class DatabaseStorage implements IStorage {
       issuesTrend.push({ date: dateStr, count: dayIssues.length });
     }
     
+    const resolvedIssuesList = allIssues.filter(i => i.status === 'resolved' && i.resolvedAt && i.createdAt);
+    let totalResolutionHours = 0;
+    for (const issue of resolvedIssuesList) {
+      const diff = new Date(issue.resolvedAt!).getTime() - new Date(issue.createdAt).getTime();
+      totalResolutionHours += diff / (1000 * 60 * 60);
+    }
+    const avgResolutionTime = resolvedIssuesList.length > 0 ? (Math.round((totalResolutionHours / resolvedIssuesList.length) * 10) / 10) : 0;
+
     return {
       totalIssues,
       pendingIssues: pendingResult.count,
       resolvedIssues,
       resolutionRate: Math.round(resolutionRate * 10) / 10,
-      avgResolutionTime: 4.2,
+      avgResolutionTime,
       activeResolvers: activeResolversResult.count,
       issuesByCategory,
       issuesByStatus,
       recentIssues,
+      mapIssues,
       issuesTrend,
     };
   }
@@ -671,15 +798,17 @@ export class DatabaseStorage implements IStorage {
       }));
 
     let priorityQueue: Issue[] = [];
+    let departmentSlug = null;
     if (departmentId) {
       const [dept] = await db.select().from(departments).where(eq(departments.id, departmentId));
       if (dept) {
+        departmentSlug = dept.slug;
         priorityQueue = await db
           .select()
           .from(issues)
           .where(and(eq(issues.category, dept.slug), or(eq(issues.status, "reported"), eq(issues.status, "verified"))))
           .orderBy(desc(issues.priority))
-          .limit(3);
+          .limit(10);
       }
     }
 
@@ -705,13 +834,161 @@ export class DatabaseStorage implements IStorage {
         address: activeJob.issue.address || activeJob.issue.district || "Unknown Location",
         priority: activeJob.issue.priority,
         status: activeJob.assignment.status,
-        distance: "340m from current location",
+        latitude: activeJob.issue.latitude,
+        longitude: activeJob.issue.longitude,
       } : null,
       departmentRankings: rankingsList,
       myDepartmentId: departmentId,
+      myDepartmentSlug: departmentSlug,
       priorityQueue,
       criticalAlert: criticalAlert || null
     };
+  }
+
+
+
+  async updateAdminUserPushToken(id: string, pushToken: string): Promise<void> {
+    await db
+      .update(adminUsers)
+      .set({ pushToken })
+      .where(eq(adminUsers.id, id));
+  }
+
+  async updateUserPushToken(id: string, pushToken: string): Promise<void> {
+    await db
+      .update(users)
+      .set({ pushToken })
+      .where(eq(users.id, id));
+  }
+
+  async notifyUserOfStatusChange(issue: any, newStatus: string): Promise<void> {
+    try {
+      const reporter = await this.getUser(issue.reporterId);
+      if (reporter && reporter.pushToken) {
+        const { sendPushNotification } = await import("./push");
+        await sendPushNotification(
+          reporter.pushToken,
+          "📣 Issue Status Updated",
+          `Your issue "${issue.title}" is now ${newStatus}.`,
+          { issueId: issue.id, type: "status_update" }
+        );
+      }
+    } catch (err) {
+      console.error("Failed to notify reporter of status change:", err);
+    }
+  }
+
+  async notifyUserOfCredits(userId: string, amount: number, reason: string): Promise<void> {
+    try {
+      const user = await this.getUser(userId);
+      if (user && user.pushToken) {
+        const { sendPushNotification } = await import("./push");
+        await sendPushNotification(
+          user.pushToken,
+          "🎉 Credits Awarded!",
+          `You earned ${amount} credits. ${reason}`,
+          { type: "credits_awarded", amount }
+        );
+      }
+    } catch (err) {
+      console.error("Failed to notify user of credits:", err);
+    }
+  }
+
+  async findNearestResolver(
+    issueCategory: string,
+    issueLat: number,
+    issueLng: number
+  ): Promise<{ resolver: Resolver; adminUser: AdminUser } | null> {
+    // 1. Find department whose categories contain the issue category
+    const allDepartments = await db.select().from(departments).where(eq(departments.isActive, true));
+    let matchingDepartment: typeof allDepartments[0] | null = null;
+
+    for (const dept of allDepartments) {
+      const cats = dept.categories as string[] | null;
+      if (cats && cats.includes(issueCategory)) {
+        matchingDepartment = dept;
+        break;
+      }
+    }
+
+    // Also try matching department slug directly against issue category
+    if (!matchingDepartment) {
+      for (const dept of allDepartments) {
+        if (dept.slug === issueCategory) {
+          matchingDepartment = dept;
+          break;
+        }
+      }
+    }
+
+    if (!matchingDepartment) {
+      console.warn(`No department found for category: ${issueCategory}`);
+      return null;
+    }
+
+    // 2. Find active resolvers in this department
+    const deptAdminUsers = await db
+      .select()
+      .from(adminUsers)
+      .where(
+        and(
+          eq(adminUsers.departmentId, matchingDepartment.id),
+          eq(adminUsers.role, "resolver"),
+          eq(adminUsers.status, "active")
+        )
+      );
+
+    if (deptAdminUsers.length === 0) {
+      console.warn(`No active resolvers found for department: ${matchingDepartment.name}`);
+      return null;
+    }
+
+    // 3. Get resolver profiles for these admin users
+    const resolverProfiles: { resolver: Resolver; adminUser: AdminUser }[] = [];
+    for (const au of deptAdminUsers) {
+      const [resolver] = await db
+        .select()
+        .from(resolvers)
+        .where(and(eq(resolvers.adminUserId, au.id), eq(resolvers.status, "active")));
+      if (resolver) {
+        resolverProfiles.push({ resolver, adminUser: au });
+      }
+    }
+
+    if (resolverProfiles.length === 0) {
+      console.warn(`No active resolver profiles for department: ${matchingDepartment.name}`);
+      return null;
+    }
+
+    // 4. Sort by distance (Haversine), then by lowest currentLoad
+    const haversine = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+      const R = 6371; // km
+      const dLat = ((lat2 - lat1) * Math.PI) / 180;
+      const dLon = ((lon2 - lon1) * Math.PI) / 180;
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos((lat1 * Math.PI) / 180) *
+          Math.cos((lat2 * Math.PI) / 180) *
+          Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    resolverProfiles.sort((a, b) => {
+      const aHasLoc = a.resolver.latitude != null && a.resolver.longitude != null;
+      const bHasLoc = b.resolver.latitude != null && b.resolver.longitude != null;
+
+      if (aHasLoc && bHasLoc) {
+        const distA = haversine(issueLat, issueLng, a.resolver.latitude!, a.resolver.longitude!);
+        const distB = haversine(issueLat, issueLng, b.resolver.latitude!, b.resolver.longitude!);
+        if (Math.abs(distA - distB) > 0.5) return distA - distB; // >500m difference matters
+      }
+
+      // Fall back to lowest current load
+      return a.resolver.currentLoad - b.resolver.currentLoad;
+    });
+
+    return resolverProfiles[0];
   }
 }
 

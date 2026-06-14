@@ -23,6 +23,7 @@
         "backgroundColor": "#1E40AF",
         "foregroundImage": "./assets/images/icon.png"
       },
+      "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -30,7 +31,9 @@
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
+        "ACCESS_COARSE_LOCATION",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
     "web": {
@@ -51,10 +54,29 @@
         }
       ],
       "expo-web-browser",
-      "expo-audio"
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#1E40AF"
+        }
+      ],
+      "expo-dev-client",
+      "expo-camera",
+      "expo-location",
+      "expo-image-picker",
+      "expo-file-system",
+      "expo-font",
+      "expo-localization",
+      "expo-asset"
     ],
     "experiments": {
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "837e5e2e-d0a8-4e25-beac-3f8639745f29"
+      }
     }
   }
 }

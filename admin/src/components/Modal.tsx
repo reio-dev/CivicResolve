@@ -61,12 +61,12 @@ const Modal: React.FC<ModalProps> = ({
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2, type: 'spring', damping: 25 }}
             className={cn(
-              'relative w-full mx-4 bg-white dark:bg-gray-800 rounded-xl shadow-xl',
+              'relative w-full mx-4 max-h-[90vh] flex flex-col bg-white/80 dark:bg-black/70 backdrop-blur-md rounded-xl shadow-xl border border-white/20 dark:border-zinc-800/50',
               sizes[size]
             )}
           >
             {(title || showCloseButton) && (
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
+              <div className="flex-none flex items-center justify-between px-6 py-4 border-b border-gray-200/50 dark:border-zinc-800/50">
                 {title && (
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h2>
                 )}
@@ -80,7 +80,7 @@ const Modal: React.FC<ModalProps> = ({
                 )}
               </div>
             )}
-            <div className="p-6">{children}</div>
+            <div className="p-6 overflow-y-auto scrollbar-hide">{children}</div>
           </motion.div>
         </div>
       )}

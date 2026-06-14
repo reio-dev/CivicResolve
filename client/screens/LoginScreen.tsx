@@ -16,6 +16,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
+import { useTranslation } from "react-i18next";
 import { Colors, Spacing, BorderRadius, Shadows } from "@/constants/theme";
 
 type LoginMode = "user_login" | "user_register" | "resolver";
@@ -24,6 +25,7 @@ export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const { login, register, resolverLogin } = useAuth();
+  const { t } = useTranslation();
 
   const [mode, setMode] = useState<LoginMode>("user_login");
   const [username, setUsername] = useState("");
@@ -34,7 +36,7 @@ export default function LoginScreen() {
 
   const handleSubmit = async () => {
     if (!username.trim() || !password.trim()) {
-      setError("Please fill in all fields");
+      setError(t("login.fillAll"));
       return;
     }
 
@@ -50,7 +52,7 @@ export default function LoginScreen() {
         await register(username.trim(), password, displayName.trim() || username.trim());
       }
     } catch (err: any) {
-      setError(err.message || "Authentication failed. Please try again.");
+      setError(err.message || t("login.authFailed"));
     } finally {
       setLoading(false);
     }
@@ -58,17 +60,17 @@ export default function LoginScreen() {
 
   const getTitle = () => {
     switch (mode) {
-      case "resolver": return "Resolver Login";
-      case "user_register": return "Create Account";
-      default: return "Welcome Back";
+      case "resolver": return t("login.titleResolver");
+      case "user_register": return t("login.titleRegister");
+      default: return t("login.titleLogin");
     }
   };
 
   const getButtonText = () => {
     switch (mode) {
-      case "resolver": return "Sign In as Resolver";
-      case "user_register": return "Create Account";
-      default: return "Sign In";
+      case "resolver": return t("login.btnResolver");
+      case "user_register": return t("login.btnRegister");
+      default: return t("login.btnLogin");
     }
   };
 
@@ -94,7 +96,7 @@ export default function LoginScreen() {
             CivicResolv
           </ThemedText>
           <ThemedText type="body" style={styles.subtitle}>
-            {mode === "resolver" ? "Field Worker Portal" : "Report. Validate. Resolve."}
+            {mode === "resolver" ? t("login.subtitleResolver") : t("login.subtitleUser")}
           </ThemedText>
         </Animated.View>
 
@@ -118,7 +120,7 @@ export default function LoginScreen() {
               <Feather name="user" size={20} color={Colors.light.muted} style={styles.inputIcon} />
               <TextInput
                 style={[styles.input, { color: Colors.light.text }]}
-                placeholder="Display Name"
+                placeholder={t("login.displayName")}
                 placeholderTextColor={Colors.light.muted}
                 value={displayName}
                 onChangeText={setDisplayName}
@@ -131,7 +133,7 @@ export default function LoginScreen() {
             <Feather name="at-sign" size={20} color={Colors.light.muted} style={styles.inputIcon} />
             <TextInput
               style={[styles.input, { color: Colors.light.text }]}
-              placeholder="Username"
+              placeholder={t("login.username")}
               placeholderTextColor={Colors.light.muted}
               value={username}
               onChangeText={setUsername}
@@ -144,7 +146,7 @@ export default function LoginScreen() {
             <Feather name="lock" size={20} color={Colors.light.muted} style={styles.inputIcon} />
             <TextInput
               style={[styles.input, { color: Colors.light.text }]}
-              placeholder="Password"
+              placeholder={t("login.password")}
               placeholderTextColor={Colors.light.muted}
               value={password}
               onChangeText={setPassword}
@@ -164,7 +166,7 @@ export default function LoginScreen() {
               style={[
                 styles.submitButtonInner,
                 {
-                  backgroundColor: mode === "resolver" ? Colors.light.secondary : Colors.light.primary,
+                  backgroundColor: Colors.light.primary,
                 },
                 ...(loading ? [] : [mode === "resolver" ? Shadows.medium : Shadows.clay]),
               ]}
@@ -185,9 +187,9 @@ export default function LoginScreen() {
               style={styles.switchButton}
             >
               <ThemedText type="small" style={{ color: Colors.light.muted }}>
-                {mode === "user_login" ? "Don't have an account? " : "Already have an account? "}
+                {mode === "user_login" ? t("login.noAccount") : t("login.hasAccount")}
                 <ThemedText type="small" style={{ color: Colors.light.primary, fontWeight: "600" }}>
-                  {mode === "user_login" ? "Sign Up" : "Sign In"}
+                  {mode === "user_login" ? t("login.signUp") : t("login.signIn")}
                 </ThemedText>
               </ThemedText>
             </Pressable>
@@ -196,7 +198,7 @@ export default function LoginScreen() {
           <View style={styles.divider}>
             <View style={[styles.dividerLine, { backgroundColor: Colors.light.border }]} />
             <ThemedText type="small" style={[styles.dividerText, { color: Colors.light.muted }]}>
-              or
+              {t("login.or")}
             </ThemedText>
             <View style={[styles.dividerLine, { backgroundColor: Colors.light.border }]} />
           </View>
@@ -211,11 +213,11 @@ export default function LoginScreen() {
             <Feather
               name={mode === "resolver" ? "users" : "tool"}
               size={18}
-              color={mode === "resolver" ? Colors.light.primary : Colors.light.secondary}
+              color={Colors.light.primary}
               style={{ marginRight: Spacing.sm }}
             />
-            <ThemedText type="small" style={{ color: mode === "resolver" ? Colors.light.primary : Colors.light.secondary, fontWeight: "600" }}>
-              {mode === "resolver" ? "Login as User" : "Login as Resolver"}
+            <ThemedText type="small" style={{ color: Colors.light.primary, fontWeight: "600" }}>
+              {mode === "resolver" ? t("login.loginUser") : t("login.loginResolver")}
             </ThemedText>
           </Pressable>
         </Animated.View>

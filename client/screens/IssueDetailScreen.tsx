@@ -15,6 +15,7 @@ import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollV
 import { getApiUrl } from "@/lib/query-client";
 import { Colors, Spacing, BorderRadius } from "@/constants/theme";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
+import { useTranslation } from "react-i18next";
 
 type RouteProps = RouteProp<RootStackParamList, "IssueDetail">;
 
@@ -27,19 +28,27 @@ const MUTED = "#888888";
 const TEXT = "#F8FAFC";
 
 const STATUS_STEPS = ["reported", "verified", "assigned", "inProgress", "resolved"];
-const STATUS_LABELS: Record<string, string> = {
-  reported: "Ticket Submitted",
-  verified: "Internal Review Complete",
-  assigned: "On-Site Inspection",
-  inProgress: "Resolution Execution",
-  resolved: "Resolved & Closed",
+
+const getStatusLabel = (status: string, t: any) => {
+  const map: Record<string, string> = {
+    reported: t("issueDetail.ticketSubmitted"),
+    verified: t("issueDetail.internalReviewComplete"),
+    assigned: t("issueDetail.onSiteInspection"),
+    inProgress: t("issueDetail.resolutionExecution"),
+    resolved: t("issueDetail.resolvedAndClosed"),
+  };
+  return map[status] || status;
 };
-const STATUS_DESCRIPTIONS: Record<string, string> = {
-  reported: "Initial report logged by user. Documentation and visual proof successfully uploaded and verified.",
-  verified: "Department of Infrastructure has acknowledged and assigned a field specialist.",
-  assigned: "Specialists are currently at the location. Real-time diagnostic data is being synchronized.",
-  inProgress: "Implementation of corrective measures as per the findings.",
-  resolved: "Issue has been resolved and verified. Case closed successfully.",
+
+const getStatusDescription = (status: string, t: any) => {
+  const map: Record<string, string> = {
+    reported: t("issueDetail.descReported"),
+    verified: t("issueDetail.descVerified"),
+    assigned: t("issueDetail.descAssigned"),
+    inProgress: t("issueDetail.descInProgress"),
+    resolved: t("issueDetail.descResolved"),
+  };
+  return map[status] || "";
 };
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -53,6 +62,7 @@ export default function IssueDetailScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const route = useRoute<RouteProps>();
+  const { t } = useTranslation();
 
   const { data: issue, isLoading } = useQuery({
     queryKey: ["/api/issues", route.params.issueId],
@@ -68,9 +78,9 @@ export default function IssueDetailScreen() {
   const countdown = useMemo(() => {
     if (!issue) return { days: 0, hours: 0, mins: 0 };
     const created = new Date(issue.createdAt).getTime();
-    // Estimate: moderate=7d, high=3d, critical=1d, low=14d
+    // Estimate: moderate=3d, high=2d, critical=1d, low=3d (max 72 hours)
     const estimatedDays =
-      issue.priority === "critical" ? 1 : issue.priority === "high" ? 3 : issue.priority === "moderate" ? 7 : 14;
+      issue.priority === "critical" ? 1 : issue.priority === "high" ? 2 : issue.priority === "moderate" ? 3 : 3;
     const deadline = created + estimatedDays * 24 * 60 * 60 * 1000;
     const remaining = Math.max(0, deadline - Date.now());
     const days = Math.floor(remaining / (1000 * 60 * 60 * 24));
@@ -89,7 +99,7 @@ export default function IssueDetailScreen() {
     if (!issue) return;
     try {
       await Share.share({
-        message: `Issue: ${issue.title}\nStatus: ${STATUS_LABELS[issue.status] || issue.status}\nID: #CR-${String(issue.id).padStart(4, "0")}\n\nTracked on CivicResolv`,
+        message: `Issue: ${issue.title}\nStatus: ${getStatusLabel(issue.status, t)}\nID: #CR-${String(issue.id).padStart(4, "0")}\n\nTracked on CivicResolv`,
       });
     } catch {}
   };
@@ -143,7 +153,7 @@ export default function IssueDetailScreen() {
               </View>
               <View style={[styles.badge, { backgroundColor: GREEN }]}>
                 <ThemedText style={[styles.badgeText, { color: "#000" }]}>
-                  {(STATUS_LABELS[issue.status] || issue.status).toUpperCase()}
+                  {(getStatusLabel(issue.status, t)).toUpperCase()}
                 </ThemedText>
               </View>
             </View>
@@ -153,7 +163,7 @@ export default function IssueDetailScreen() {
               <View style={styles.heroLocationRow}>
                 <Feather name="map-pin" size={14} color={GREEN} />
                 <ThemedText style={styles.heroLocation} numberOfLines={1}>
-                  {issue.address || "Location unavailable"}
+                  {issue.address || t("issueDetail.locationUnavailable")}
                 </ThemedText>
               </View>
             </View>
@@ -163,9 +173,9 @@ export default function IssueDetailScreen() {
         {/* ── Issue ID Row ── */}
         <Animated.View entering={FadeInUp.delay(100).duration(400)}>
           <View style={styles.issueIdRow}>
-            <ThemedText style={styles.issueIdLabel}>ISSUE ID: {issueId}</ThemedText>
+            <ThemedText style={styles.issueIdLabel}>{t("issueDetail.issueId")}: {issueId}</ThemedText>
             <View style={styles.avatarGroup}>
-              {[GREEN, "#3B82F6", "#8B5CF6"].map((c, i) => (
+              {[GREEN, "#3B82F6", GREEN].map((c, i) => (
                 <View key={i} style={[styles.miniAvatar, { backgroundColor: c, marginLeft: i > 0 ? -8 : 0 }]}>
                   <ThemedText style={styles.miniAvatarText}>{i === 0 ? "U" : i === 1 ? "R" : "A"}</ThemedText>
                 </View>
@@ -178,30 +188,30 @@ export default function IssueDetailScreen() {
         {/* ── Estimated Resolution ── */}
         <Animated.View entering={FadeInUp.delay(200).duration(400)}>
           <View style={styles.card}>
-            <ThemedText style={styles.cardLabel}>ESTIMATED RESOLUTION</ThemedText>
+            <ThemedText style={styles.cardLabel}>{t("issueDetail.estimatedResolution")}</ThemedText>
             <View style={styles.countdownRow}>
               <View style={styles.countdownItem}>
                 <ThemedText style={styles.countdownNumber}>
                   {String(countdown.days).padStart(2, "0")}
                 </ThemedText>
-                <ThemedText style={styles.countdownUnit}>DAYS</ThemedText>
+                <ThemedText style={styles.countdownUnit}>{t("issueDetail.days")}</ThemedText>
               </View>
               <View style={styles.countdownItem}>
                 <ThemedText style={styles.countdownNumber}>
                   {String(countdown.hours).padStart(2, "0")}
                 </ThemedText>
-                <ThemedText style={styles.countdownUnit}>HOURS</ThemedText>
+                <ThemedText style={styles.countdownUnit}>{t("issueDetail.hours")}</ThemedText>
               </View>
               <View style={styles.countdownItem}>
                 <ThemedText style={styles.countdownNumber}>
                   {String(countdown.mins).padStart(2, "0")}
                 </ThemedText>
-                <ThemedText style={styles.countdownUnit}>MINS</ThemedText>
+                <ThemedText style={styles.countdownUnit}>{t("issueDetail.mins")}</ThemedText>
               </View>
             </View>
             <Pressable style={styles.trackingButton}>
               <View style={styles.trackingDot} />
-              <ThemedText style={styles.trackingButtonText}>TRACKING LIVE RESOLUTION</ThemedText>
+              <ThemedText style={styles.trackingButtonText}>{t("issueDetail.trackingLiveResolution")}</ThemedText>
             </Pressable>
           </View>
         </Animated.View>
@@ -211,7 +221,7 @@ export default function IssueDetailScreen() {
           <View style={styles.card}>
             <View style={styles.timelineHeader}>
               <Feather name="file-text" size={20} color={GREEN} />
-              <ThemedText style={styles.timelineTitle}>Case Timeline</ThemedText>
+              <ThemedText style={styles.timelineTitle}>{t("issueDetail.caseTimeline")}</ThemedText>
             </View>
 
             {STATUS_STEPS.map((status, index) => {
@@ -248,11 +258,11 @@ export default function IssueDetailScreen() {
                       <ThemedText style={styles.timelineDate}>{dateLabel}</ThemedText>
                     ) : null}
                     <ThemedText style={[styles.timelineStepTitle, { fontWeight: isCurrent ? "700" : "600" }]}>
-                      {STATUS_LABELS[status]}
+                      {getStatusLabel(status, t)}
                     </ThemedText>
                     {(isComplete || isCurrent) && (
                       <ThemedText style={styles.timelineDesc}>
-                        {STATUS_DESCRIPTIONS[status]}
+                        {getStatusDescription(status, t)}
                       </ThemedText>
                     )}
 
@@ -282,7 +292,7 @@ export default function IssueDetailScreen() {
             <View style={styles.card}>
               <View style={styles.timelineHeader}>
                 <Feather name="camera" size={20} color={GREEN} />
-                <ThemedText style={styles.timelineTitle}>Resolution Photos</ThemedText>
+                <ThemedText style={styles.timelineTitle}>{t("issueDetail.resolutionPhotos")}</ThemedText>
               </View>
               <View style={styles.resolutionGrid}>
                 {issue.resolutionPhotos.map((photo: string, idx: number) => (
@@ -292,7 +302,7 @@ export default function IssueDetailScreen() {
               <View style={styles.resolvedBanner}>
                 <Feather name="check-circle" size={16} color={GREEN} />
                 <ThemedText style={{ color: GREEN, marginLeft: 8, fontSize: 13 }}>
-                  Issue resolved {issue.resolvedAt ? `on ${new Date(issue.resolvedAt).toLocaleDateString()}` : ""}
+                  {t("issueDetail.issueResolvedOn")} {issue.resolvedAt ? new Date(issue.resolvedAt).toLocaleDateString() : ""}
                 </ThemedText>
               </View>
             </View>
@@ -303,12 +313,12 @@ export default function IssueDetailScreen() {
         <Animated.View entering={FadeInUp.delay(400).duration(400)}>
           <Pressable style={styles.contactButton} onPress={handleContactSupport}>
             <Feather name="phone" size={18} color={GREEN} />
-            <ThemedText style={styles.contactButtonText}>Contact Support</ThemedText>
+            <ThemedText style={styles.contactButtonText}>{t("issueDetail.contactSupport")}</ThemedText>
           </Pressable>
 
           <Pressable style={styles.shareButton} onPress={handleShareStatus}>
             <Feather name="share-2" size={18} color={TEXT} />
-            <ThemedText style={styles.shareButtonText}>Share Status</ThemedText>
+            <ThemedText style={styles.shareButtonText}>{t("issueDetail.shareStatus")}</ThemedText>
           </Pressable>
         </Animated.View>
       </KeyboardAwareScrollViewCompat>

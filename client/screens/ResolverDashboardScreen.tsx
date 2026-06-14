@@ -1,12 +1,14 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   StyleSheet,
   ScrollView,
   Pressable,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
@@ -14,9 +16,14 @@ import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import Animated, { FadeInDown } from "react-native-reanimated";
+import * as Location from "expo-location";
+import { useTranslation } from "react-i18next";
+import { getUnreadCount } from "@/lib/local-notifications";
 import { ThemedText } from "@/components/ThemedText";
+import { MapcnView } from "@/components/MapcnView";
 import { ThemedView } from "@/components/ThemedView";
 import { Colors, Spacing, BorderRadius } from "@/constants/theme";
+import { getApiUrl } from "@/lib/query-client";
 
 const C = Colors.light;
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -31,16 +38,74 @@ const priorityColor = (p?: string) => {
 const priorityIcon = (p?: string): any =>
   p === "critical" || p === "high" ? "alert-circle" : p === "medium" ? "alert-triangle" : "globe";
 
+function timeAgo(dateStr: string): string {
+  const mins = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ResolverDashboardScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const [mapActive, setMapActive] = useState(false);
+  const [userLoc, setUserLoc] = useState<[number, number] | null>(null);
   const { user } = useAuth();
   const navigation = useNavigation<Nav>();
+  const { t } = useTranslation();
 
-  const { data, isLoading } = useQuery<any>({
+  React.useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === "granted") {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        setUserLoc([loc.coords.longitude, loc.coords.latitude]);
+      }
+    })();
+  }, []);
+
+  const resolverId = (user as any)?.resolverId ?? null;
+
+  const { data, isLoading, refetch: refetchDashboard } = useQuery<any>({
     queryKey: [`/api/resolver/dashboard/${user?.id}`],
     enabled: !!user?.id && user?.role === "resolver",
   });
+
+  // Fetch assignments
+  const { data: assignments = [], refetch: refetchAssignments } = useQuery<any[]>({
+    queryKey: ["/api/resolver", resolverId, "assignments"],
+    queryFn: async () => {
+      if (!resolverId) return [];
+      const apiUrl = `${getApiUrl()}/api/resolver/${resolverId}/assignments`;
+      const response = await fetch(apiUrl, {
+        headers: { "ngrok-skip-browser-warning": "true" },
+      });
+      if (!response.ok) throw new Error("Failed to fetch assignments");
+      return response.json();
+    },
+    enabled: !!resolverId,
+  });
+
+  // Unread notification count
+  const { data: unreadCount = 0 } = useQuery({
+    queryKey: ["unread-count", user?.id],
+    queryFn: async () => {
+      if (!user?.id) return 0;
+      return await getUnreadCount();
+    },
+    enabled: !!user?.id,
+  });
+
+  const [refreshing, setRefreshing] = React.useState(false);
+
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([refetchDashboard(), refetchAssignments()]);
+    setRefreshing(false);
+  }, [refetchDashboard, refetchAssignments]);
 
   if (isLoading) {
     return (
@@ -54,10 +119,10 @@ export default function ResolverDashboardScreen() {
     return (
       <ThemedView style={[$s.root, { paddingTop: insets.top, justifyContent: "center", alignItems: "center", padding: Spacing.xl }]}>
         <ThemedText style={{ color: C.error, textAlign: "center", fontWeight: "700", marginBottom: Spacing.sm }}>
-          Unable to load dashboard.
+          {t("resolverDash.unableToLoad")}
         </ThemedText>
         <ThemedText style={{ color: C.muted, textAlign: "center", fontSize: 12 }}>
-          {data?.error ?? (data ? `Unexpected payload: ${JSON.stringify(data).substring(0, 80)}` : "No data returned")}
+          {data?.error ?? t("resolverDash.noData")}
         </ThemedText>
       </ThemedView>
     );
@@ -65,33 +130,102 @@ export default function ResolverDashboardScreen() {
 
   const xp = Number(data.resolver?.xp ?? 0);
   const level = Number(data.resolver?.level ?? 1);
-  const uptime = Number(data.resolver?.uptime ?? 0);
-  const rankings: any[] = data.departmentRankings ?? [];
-  const queue: any[] = data.priorityQueue ?? [];
+  const totalResolved = Number(data.resolver?.totalResolved ?? 0);
+  const rawQueue: any[] = assignments
+    .filter((a: any) => a.issue && a.status !== "completed")
+    .map((a: any) => a.issue);
+
+  const priorityWeight = (priority?: string) => {
+    switch (priority?.toLowerCase()) {
+      case "critical": return 4;
+      case "high": return 3;
+      case "medium": return 2;
+      case "low": return 1;
+      default: return 0;
+    }
+  };
+
+  const haversine = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const R = 6371;
+    const dLat = ((lat2 - lat1) * Math.PI) / 180;
+    const dLon = ((lon2 - lon1) * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  const queue = React.useMemo(() => {
+    let sorted = [...rawQueue];
+    sorted.sort((a, b) => {
+      const pA = priorityWeight(a.priority);
+      const pB = priorityWeight(b.priority);
+      if (pA !== pB) return pB - pA; // Descending priority
+      
+      if (userLoc && a.latitude && a.longitude && b.latitude && b.longitude) {
+        const distA = haversine(userLoc[1], userLoc[0], a.latitude, a.longitude);
+        const distB = haversine(userLoc[1], userLoc[0], b.latitude, b.longitude);
+        return distA - distB; // Ascending distance
+      }
+      return 0;
+    });
+    return sorted;
+  }, [rawQueue, userLoc]);
+
   const activeJob = data.activeJob ?? null;
-  const critical = data.criticalAlert ?? null;
-  const myDeptId = data.myDepartmentId ?? null;
-  const maxResolved = Math.max(...rankings.map((d) => d.totalResolved ?? 0), 1);
+  const fullActiveJob = queue.length > 0 ? queue[0] : null;
+  const activeAssignments = assignments.filter((a: any) => a.status !== "completed").length;
+  const rating = (user as any)?.rating ?? 0;
 
   const goActiveJob = () => {
-    if (activeJob) {
+    if (fullActiveJob) {
+      const assignment = assignments.find((a: any) => a.issueId === fullActiveJob.id);
       navigation.navigate("ResolverIssueDetail", {
-        assignmentId: activeJob.assignmentId,
-        issueId: activeJob.id,
+        assignmentId: assignment?.id?.toString() || activeJob?.assignmentId,
+        issueId: fullActiveJob.id,
       });
     }
   };
 
-  const goIssue = (issueId: string) => navigation.navigate("IssueDetail", { issueId });
+  const getCategoryIcon = (cat?: string) => {
+    if (cat === "water") return "droplet";
+    if (cat === "electricity") return "zap";
+    if (cat === "roads") return "map";
+    if (cat === "parks") return "tree";
+    if (cat === "waste") return "trash-2";
+    return "alert-circle";
+  };
+
+  const getStatusColor = (status?: string) => {
+    if (status === "resolved") return "#10B981"; // Success
+    if (status === "in_progress") return "#3B82F6"; // Primary
+    if (status === "assigned") return "#F59E0B"; // Warning
+    return "#EF4444"; // Error
+  };
+
+  const activeJobDistance = React.useMemo(() => {
+    if (!fullActiveJob?.latitude || !fullActiveJob?.longitude || !userLoc) return "Distance unknown";
+    const dist = haversine(userLoc[1], userLoc[0], fullActiveJob.latitude, fullActiveJob.longitude);
+    return dist < 1 ? `${(dist * 1000).toFixed(0)}m away` : `${dist.toFixed(1)}km away`;
+  }, [fullActiveJob, userLoc]);
+
+  const displayName = (user as any)?.name || user?.username || "Resolver";
 
   return (
     <ThemedView style={$s.root}>
       <ScrollView
+        scrollEnabled={!mapActive}
         contentContainerStyle={[
           $s.scroll,
-          { paddingTop: insets.top + Spacing.lg, paddingBottom: insets.bottom + 100 },
+          { paddingTop: insets.top + Spacing.lg, paddingBottom: tabBarHeight + Spacing.xl },
         ]}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={C.primary}
+            colors={[C.primary]}
+          />
+        }
       >
         {/* ── App Header ── */}
         <Animated.View entering={FadeInDown.duration(350).delay(0)} style={$s.appHeader}>
@@ -99,16 +233,23 @@ export default function ResolverDashboardScreen() {
             <Feather name="shield" size={18} color={C.primary} />
             <ThemedText style={$s.brandName}>CivicResolv</ThemedText>
           </View>
-          <Pressable style={$s.bellBtn}>
+          <Pressable style={$s.bellBtn} onPress={() => navigation.navigate("ResolverNotifications" as any)}>
             <Feather name="bell" size={20} color={C.text} />
+            {unreadCount > 0 && (
+              <View style={$s.bellBadge}>
+                <ThemedText style={$s.bellBadgeText}>
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </ThemedText>
+              </View>
+            )}
           </Pressable>
         </Animated.View>
 
-        {/* ── Title ── */}
+        {/* ── Greeting ── */}
         <Animated.View entering={FadeInDown.duration(350).delay(50)} style={{ marginBottom: Spacing.lg }}>
-          <ThemedText style={$s.titleWhite}>Resolver</ThemedText>
-          <ThemedText style={$s.titleGreen}>Dashboard</ThemedText>
-          <ThemedText style={$s.subtitle}>Your precision work queue is ready.</ThemedText>
+          <ThemedText style={$s.greeting}>{t("resolverDash.welcome")},</ThemedText>
+          <ThemedText style={$s.titleGreen}>{displayName}</ThemedText>
+          <ThemedText style={$s.subtitle}>{t("resolverDash.subtitle")}</ThemedText>
         </Animated.View>
 
         {/* ── XP Pill ── */}
@@ -118,139 +259,129 @@ export default function ResolverDashboardScreen() {
             <ThemedText style={$s.xpText}>+{xp.toLocaleString()} XP</ThemedText>
           </View>
           <View style={$s.levelChip}>
-            <ThemedText style={$s.levelText}>LEVEL {level}</ThemedText>
+            <ThemedText style={$s.levelText}>{t("resolverDash.level")} {level}</ThemedText>
+          </View>
+        </Animated.View>
+
+        {/* ── Quick Stats ── */}
+        <Animated.View entering={FadeInDown.duration(350).delay(140)} style={$s.statsRow}>
+          <View style={$s.statBox}>
+            <View style={[$s.statIconWrap, { backgroundColor: `${C.primary}18` }]}>
+              <Feather name="check-circle" size={18} color={C.primary} />
+            </View>
+            <ThemedText style={$s.statNumber}>{totalResolved}</ThemedText>
+            <ThemedText style={$s.statLabel}>{t("resolverDash.resolved")}</ThemedText>
+          </View>
+          <View style={$s.statBox}>
+            <View style={[$s.statIconWrap, { backgroundColor: "#F59E0B18" }]}>
+              <Feather name="clipboard" size={18} color="#F59E0B" />
+            </View>
+            <ThemedText style={$s.statNumber}>{activeAssignments}</ThemedText>
+            <ThemedText style={$s.statLabel}>{t("resolverDash.active")}</ThemedText>
+          </View>
+          <View style={$s.statBox}>
+            <View style={[$s.statIconWrap, { backgroundColor: "#F59E0B18" }]}>
+              <Feather name="star" size={18} color="#F59E0B" />
+            </View>
+            <ThemedText style={$s.statNumber}>{rating > 0 ? rating.toFixed(1) : "—"}</ThemedText>
+            <ThemedText style={$s.statLabel}>{t("resolverDash.rating")}</ThemedText>
           </View>
         </Animated.View>
 
         {/* ── Active Job Card ── */}
-        {activeJob && (
-          <Animated.View entering={FadeInDown.duration(350).delay(150)} style={$s.card}>
+        {fullActiveJob && (
+          <Animated.View entering={FadeInDown.duration(350).delay(180)} style={$s.card}>
             <View style={$s.activeBadge}>
-              <ThemedText style={$s.activeBadgeText}>ACTIVE JOB</ThemedText>
+              <ThemedText style={$s.activeBadgeText}>{t("resolverDash.activeJob")}</ThemedText>
             </View>
 
             <View style={$s.activeJobRow}>
               <View style={{ flex: 1 }}>
-                <ThemedText style={$s.jobTitle}>{activeJob.title ?? "Active Issue"}</ThemedText>
+                <ThemedText style={$s.jobTitle}>{fullActiveJob.title ?? "Active Issue"}</ThemedText>
                 <ThemedText style={$s.jobMeta}>
-                  {activeJob.address ?? "Unknown Location"} • {(activeJob.priority ?? "medium").toUpperCase()} URGENCY
+                  {fullActiveJob.address ?? t("resolverDash.unknownLocation")} • {(fullActiveJob.priority ?? "medium").toUpperCase()}
                 </ThemedText>
               </View>
               <View style={$s.jobIcon}>
-                <Feather name="home" size={20} color={C.primary} />
+                <Feather name="navigation" size={20} color={C.primary} />
               </View>
             </View>
 
-            {/* Map stub */}
+            {/* Map */}
             <View style={$s.mapStub}>
-              <Feather name="map" size={50} color={C.border} style={{ opacity: 0.3 }} />
-              <View style={$s.distancePill}>
+              {(fullActiveJob?.longitude !== undefined && fullActiveJob?.latitude !== undefined) || userLoc ? (
+                <MapcnView
+                  style={{ ...StyleSheet.absoluteFillObject }}
+                  theme="dark"
+                  zoom={14}
+                  center={fullActiveJob?.longitude !== undefined && fullActiveJob?.latitude !== undefined ? [fullActiveJob.longitude, fullActiveJob.latitude] : userLoc!}
+                  showsUserLocation={true}
+                  fitToMarkersAndUser={true}
+                  disableShakeToFly={true}
+                  onInteract={setMapActive}
+                  markers={fullActiveJob?.longitude !== undefined && fullActiveJob?.latitude !== undefined ? [{
+                    id: fullActiveJob.id,
+                    coordinate: [fullActiveJob.longitude, fullActiveJob.latitude],
+                    color: getStatusColor(fullActiveJob.status),
+                    icon: getCategoryIcon(fullActiveJob.category)
+                  }] : []}
+                />
+              ) : (
+                <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#111", ...StyleSheet.absoluteFillObject }}>
+                  <ActivityIndicator color={C.primary} size="large" />
+                  <ThemedText style={{ color: C.muted, marginTop: 10, fontSize: 12 }}>{t("resolverDash.locating", "Locating...")}</ThemedText>
+                </View>
+              )}
+              <View style={[$s.distancePill, { position: 'absolute', bottom: Spacing.sm, left: Spacing.sm, zIndex: 10 }]}>
                 <View style={$s.distanceDot} />
-                <ThemedText style={$s.distanceLabel}>{activeJob.distance ?? "Near current location"}</ThemedText>
+                <ThemedText style={$s.distanceLabel}>{activeJobDistance}</ThemedText>
               </View>
             </View>
 
             <Pressable style={$s.resumeBtn} onPress={goActiveJob}>
-              <ThemedText style={$s.resumeBtnText}>RESUME RESOLUTION</ThemedText>
+              <ThemedText style={$s.resumeBtnText}>{t("resolverDash.resumeResolution")}</ThemedText>
               <Feather name="arrow-right" size={16} color="#000" />
             </Pressable>
           </Animated.View>
         )}
 
-        {/* ── Global Standings ── */}
-        <Animated.View entering={FadeInDown.duration(350).delay(200)} style={$s.card}>
-          <ThemedText style={$s.sectionLabel}>GLOBAL STANDINGS</ThemedText>
-          <ThemedText style={$s.cardTitle}>Team Rank</ThemedText>
-
-          <View style={{ gap: Spacing.sm }}>
-            {rankings.slice(0, 3).map((dept) => {
-              const isMe = dept.departmentId === myDeptId;
-              const progress = ((dept.totalResolved ?? 0) / maxResolved) * 100;
-              return (
-                <View
-                  key={dept.departmentId}
-                  style={[
-                    $s.rankRow,
-                    isMe && { backgroundColor: `${C.primary}12`, borderWidth: 1, borderColor: `${C.primary}33`, borderRadius: BorderRadius.sm, padding: Spacing.sm, marginHorizontal: -Spacing.sm },
-                  ]}
-                >
-                  <View style={[$s.rankBadge, isMe && { backgroundColor: C.primary }]}>
-                    <ThemedText style={[$s.rankNum, isMe && { color: "#000", fontWeight: "700" }]}>
-                      {String(dept.rank ?? 0).padStart(2, "0")}
-                    </ThemedText>
-                  </View>
-                  <View style={{ flex: 1, marginLeft: Spacing.sm }}>
-                    <ThemedText style={[$s.rankName, isMe && { color: C.primary }]}>
-                      {isMe
-                        ? `YOU (${(dept.name ?? "").toUpperCase()})`
-                        : (dept.name ?? "Unknown").replace(" ", "_")}
-                    </ThemedText>
-                    <View style={$s.progBg}>
-                      <View
-                        style={[
-                          $s.progFill,
-                          { width: `${progress}%` as any, backgroundColor: isMe ? C.primary : "#4ADE80" },
-                        ]}
-                      />
-                    </View>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-
-          <View style={$s.nextTierBox}>
-            <ThemedText style={$s.nextTierLabel}>NEXT TIER</ThemedText>
-            <ThemedText style={$s.nextTierVal}>{Math.max(0, level * 1000 - xp)} XP to Silver</ThemedText>
-          </View>
-        </Animated.View>
-
-        {/* ── Emergency Alert ── */}
-        {critical && (
-          <Animated.View entering={FadeInDown.duration(350).delay(260)} style={$s.alertCard}>
-            <View style={$s.alertIconWrap}>
-              <Feather name="alert-triangle" size={18} color={C.warning} />
+        {/* ── No Active Job ── */}
+        {!fullActiveJob && (
+          <Animated.View entering={FadeInDown.duration(350).delay(180)} style={$s.noJobCard}>
+            <View style={$s.noJobIconWrap}>
+              <Feather name="check" size={28} color={C.primary} />
             </View>
-            <View style={{ flex: 1 }}>
-              <ThemedText style={$s.alertTitle}>Emergency Alert</ThemedText>
-              <ThemedText style={$s.alertDesc}>
-                {critical.title} in {critical.district ?? "Grid 4"}. {(critical.description ?? "").substring(0, 60)}...
-              </ThemedText>
-            </View>
+            <ThemedText style={$s.noJobTitle}>{t("resolverDash.allClear")}</ThemedText>
+            <ThemedText style={$s.noJobDesc}>{t("resolverDash.allClearDesc")}</ThemedText>
           </Animated.View>
         )}
 
-        {/* ── Uptime ── */}
-        <Animated.View entering={FadeInDown.duration(350).delay(310)} style={$s.card}>
-          <ThemedText style={$s.sectionLabel}>UPTIME</ThemedText>
-          <ThemedText style={$s.uptimeVal}>{uptime}%</ThemedText>
-          <ThemedText style={$s.uptimeLabel}>RESOLUTION ACCURACY</ThemedText>
-        </Animated.View>
-
         {/* ── Priority Queue ── */}
-        <Animated.View entering={FadeInDown.duration(350).delay(360)} style={$s.card}>
+        <Animated.View entering={FadeInDown.duration(350).delay(220)} style={$s.queueContainer}>
           <View style={$s.queueHeader}>
-            <ThemedText style={$s.cardTitle}>Priority Queue</ThemedText>
-            <Pressable style={$s.viewAllBtn}>
-              <ThemedText style={$s.viewAllText}>VIEW ALL</ThemedText>
-              <Feather name="external-link" size={12} color={C.primary} />
-            </Pressable>
+            <ThemedText style={$s.queueHeading}>{t("resolverDash.priorityQueue")}</ThemedText>
+            <View style={$s.queueCount}>
+              <ThemedText style={$s.queueCountText}>{queue.length}</ThemedText>
+            </View>
           </View>
 
           {queue.length === 0 && (
-            <ThemedText style={{ color: C.muted, textAlign: "center", marginVertical: Spacing.xl, fontSize: 13 }}>
-              No pending issues.
-            </ThemedText>
+            <View style={$s.emptyQueue}>
+              <Feather name="inbox" size={28} color={C.border} />
+              <ThemedText style={$s.emptyQueueText}>{t("resolverDash.noPending")}</ThemedText>
+            </View>
           )}
 
-          {queue.map((item, i) => (
-            <Pressable key={item.id ?? i} style={$s.queueRow} onPress={() => goIssue(item.id)}>
+          {queue.length > 1 && queue.slice(1).map((item, i) => (
+            <Pressable key={item.id ?? i} style={$s.queueRow}>
               <View style={[$s.queueIconBg, { backgroundColor: `${priorityColor(item.priority)}22` }]}>
                 <Feather name={priorityIcon(item.priority)} size={16} color={priorityColor(item.priority)} />
               </View>
               <View style={{ flex: 1, marginLeft: Spacing.md }}>
                 <ThemedText style={$s.queueTitle}>{item.title ?? "Unknown Issue"}</ThemedText>
-                <ThemedText style={$s.queueMeta}>{item.address ?? "Unknown"} • 2.1KM</ThemedText>
+                <ThemedText style={$s.queueMeta}>
+                  {item.address ?? "Unknown"} {item.createdAt ? `• ${timeAgo(item.createdAt)}` : ""}
+                </ThemedText>
               </View>
               <View style={[$s.priorityChip, { borderColor: priorityColor(item.priority) }]}>
                 <ThemedText style={[$s.priorityChipText, { color: priorityColor(item.priority) }]}>
@@ -259,16 +390,11 @@ export default function ResolverDashboardScreen() {
               </View>
             </Pressable>
           ))}
-        </Animated.View>
-
-        {/* ── Master Status ── */}
-        <Animated.View entering={FadeInDown.duration(350).delay(420)} style={$s.masterCard}>
-          <View style={$s.masterIconWrap}>
-            <Feather name="award" size={24} color="#000" />
-          </View>
-          <ThemedText style={$s.masterTitle}>MASTER RESOLVER STATUS</ThemedText>
-          <View style={$s.masterDivider} />
-          <ThemedText style={$s.masterVerified}>VERIFIED</ThemedText>
+          {queue.length === 1 && (
+            <ThemedText style={{ color: C.muted, paddingVertical: Spacing.md, textAlign: "center" }}>
+              No additional issues in queue
+            </ThemedText>
+          )}
         </Animated.View>
       </ScrollView>
     </ThemedView>
@@ -276,11 +402,10 @@ export default function ResolverDashboardScreen() {
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
-const C2 = Colors.light;
 const $s = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: C2.backgroundRoot,
+    backgroundColor: C.backgroundRoot,
   },
   scroll: {
     paddingHorizontal: Spacing.lg,
@@ -300,42 +425,59 @@ const $s = StyleSheet.create({
   brandName: {
     fontSize: 15,
     fontWeight: "700",
-    color: C2.text,
+    color: C.text,
     letterSpacing: 0.3,
   },
   bellBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: C2.surface,
+    backgroundColor: C.surface,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: C2.border,
+    borderColor: C.border,
   },
-  // Title
-  titleWhite: {
-    fontSize: 38,
-    fontWeight: "900",
-    color: "#FFFFFF",
-    lineHeight: 42,
-    letterSpacing: -1,
+  bellBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#EF4444",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: C.backgroundRoot,
+  },
+  bellBadgeText: {
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: "800",
+  },
+  // Greeting
+  greeting: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: C.muted,
   },
   titleGreen: {
-    fontSize: 38,
+    fontSize: 34,
     fontWeight: "900",
-    color: C2.primary,
-    lineHeight: 42,
+    color: C.primary,
+    lineHeight: 40,
     letterSpacing: -1,
   },
   subtitle: {
     fontSize: 13,
-    color: C2.muted,
+    color: C.muted,
     marginTop: Spacing.xs,
   },
   // XP Pill
   xpPill: {
-    backgroundColor: C2.primary,
+    backgroundColor: C.primary,
     borderRadius: BorderRadius.xl,
     flexDirection: "row",
     alignItems: "center",
@@ -366,39 +508,67 @@ const $s = StyleSheet.create({
     fontSize: 10,
     letterSpacing: 0.5,
   },
+  // Quick Stats
+  statsRow: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginBottom: Spacing.lg,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: C.surface,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  statIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.sm,
+  },
+  statNumber: {
+    fontSize: 26,
+    fontWeight: "900",
+    color: C.text,
+    lineHeight: 30,
+  },
+  statLabel: {
+    fontSize: 9,
+    fontWeight: "700",
+    color: C.muted,
+    letterSpacing: 1.5,
+    marginTop: 2,
+  },
   // Card base
   card: {
-    backgroundColor: C2.surface,
+    backgroundColor: C.surface,
     borderRadius: BorderRadius.lg,
     padding: Spacing.lg,
     marginBottom: Spacing.md,
     borderWidth: 1,
-    borderColor: C2.border,
-  },
-  sectionLabel: {
-    fontSize: 9,
-    fontWeight: "800",
-    color: C2.muted,
-    letterSpacing: 2,
-    marginBottom: Spacing.xs,
+    borderColor: C.border,
   },
   cardTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "700",
-    color: C2.text,
-    marginBottom: Spacing.lg,
+    color: C.text,
   },
   // Active Job
   activeBadge: {
     alignSelf: "flex-start",
-    backgroundColor: `${C2.primary}18`,
+    backgroundColor: `${C.primary}18`,
     borderRadius: BorderRadius.xs,
     paddingHorizontal: Spacing.sm,
     paddingVertical: 3,
     marginBottom: Spacing.md,
   },
   activeBadgeText: {
-    color: C2.primary,
+    color: C.primary,
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 1.5,
@@ -409,31 +579,31 @@ const $s = StyleSheet.create({
     gap: Spacing.sm,
   },
   jobTitle: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "900",
-    color: C2.text,
+    color: C.text,
     marginBottom: 4,
-    lineHeight: 28,
+    lineHeight: 26,
   },
   jobMeta: {
     fontSize: 12,
-    color: C2.muted,
+    color: C.muted,
   },
   jobIcon: {
     width: 42,
     height: 42,
     borderRadius: BorderRadius.sm,
-    backgroundColor: `${C2.primary}14`,
+    backgroundColor: `${C.primary}14`,
     alignItems: "center",
     justifyContent: "center",
   },
   mapStub: {
-    height: 110,
-    backgroundColor: C2.backgroundRoot,
+    height: 150,
+    backgroundColor: C.backgroundRoot,
     borderRadius: BorderRadius.sm,
     marginTop: Spacing.lg,
     borderWidth: 1,
-    borderColor: C2.border,
+    borderColor: C.border,
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "flex-end",
@@ -442,28 +612,28 @@ const $s = StyleSheet.create({
   distancePill: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: C2.surface,
+    backgroundColor: C.surface,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.xs + 2,
     borderRadius: BorderRadius.xs,
     borderWidth: 1,
-    borderColor: C2.border,
+    borderColor: C.border,
     alignSelf: "flex-start",
   },
   distanceDot: {
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: C2.primary,
+    backgroundColor: C.primary,
     marginRight: Spacing.xs,
   },
   distanceLabel: {
-    color: C2.text,
+    color: C.text,
     fontSize: 9,
     fontWeight: "700",
   },
   resumeBtn: {
-    backgroundColor: C2.primary,
+    backgroundColor: C.primary,
     borderRadius: BorderRadius.md,
     flexDirection: "row",
     alignItems: "center",
@@ -478,128 +648,83 @@ const $s = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 1.5,
   },
-  // Rankings
-  rankRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  rankBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: C2.surfaceHighlight,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  rankNum: {
-    color: C2.muted,
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  rankName: {
-    color: C2.text,
-    fontSize: 12,
-    fontWeight: "600",
-    marginBottom: 4,
-  },
-  progBg: {
-    height: 3,
-    backgroundColor: C2.border,
-    borderRadius: 2,
-    overflow: "hidden",
-  },
-  progFill: {
-    height: "100%",
-    borderRadius: 2,
-  },
-  nextTierBox: {
-    backgroundColor: C2.backgroundRoot,
-    borderRadius: BorderRadius.sm,
-    padding: Spacing.md,
-    alignItems: "center",
-    marginTop: Spacing.lg,
-  },
-  nextTierLabel: {
-    fontSize: 9,
-    fontWeight: "800",
-    color: C2.muted,
-    letterSpacing: 1.5,
-    marginBottom: 2,
-  },
-  nextTierVal: {
-    color: C2.text,
-    fontWeight: "700",
-    fontSize: 14,
-  },
-  // Alert
-  alertCard: {
-    backgroundColor: `${C2.warning}0D`,
-    borderWidth: 1,
-    borderColor: `${C2.warning}33`,
+  // No active job
+  noJobCard: {
+    backgroundColor: C.surface,
     borderRadius: BorderRadius.lg,
-    padding: Spacing.lg,
-    flexDirection: "row",
-    alignItems: "flex-start",
+    padding: Spacing.xl,
     marginBottom: Spacing.md,
-    gap: Spacing.md,
+    borderWidth: 1,
+    borderColor: C.border,
+    alignItems: "center",
   },
-  alertIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: `${C2.warning}22`,
+  noJobIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: `${C.primary}15`,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 2,
+    marginBottom: Spacing.md,
   },
-  alertTitle: {
-    color: C2.text,
+  noJobTitle: {
+    fontSize: 16,
     fontWeight: "700",
-    fontSize: 14,
-    marginBottom: 4,
+    color: C.text,
+    marginBottom: Spacing.xs,
   },
-  alertDesc: {
-    color: C2.muted,
-    fontSize: 12,
-    lineHeight: 18,
-  },
-  // Uptime
-  uptimeVal: {
-    color: C2.primary,
-    fontSize: 52,
-    fontWeight: "900",
-    letterSpacing: -2,
-    lineHeight: 56,
-  },
-  uptimeLabel: {
-    color: C2.muted,
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 2,
-    marginTop: 2,
+  noJobDesc: {
+    fontSize: 13,
+    color: C.muted,
+    textAlign: "center",
+    lineHeight: 19,
   },
   // Queue
+  queueContainer: {
+    backgroundColor: C.surface,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: C.border,
+  },
+  queueHeading: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: C.text,
+  },
   queueHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: Spacing.lg,
   },
-  viewAllBtn: {
-    flexDirection: "row",
+  queueCount: {
+    backgroundColor: `${C.primary}18`,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
-    gap: 4,
+    justifyContent: "center",
   },
-  viewAllText: {
-    color: C2.primary,
-    fontSize: 10,
+  queueCountText: {
+    color: C.primary,
+    fontSize: 12,
     fontWeight: "800",
-    letterSpacing: 1,
+  },
+  emptyQueue: {
+    alignItems: "center",
+    paddingVertical: Spacing.xl,
+    gap: Spacing.sm,
+  },
+  emptyQueueText: {
+    color: C.muted,
+    fontSize: 13,
   },
   queueRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: C2.backgroundRoot,
+    backgroundColor: C.backgroundRoot,
     borderRadius: BorderRadius.sm,
     padding: Spacing.md,
     marginBottom: Spacing.sm,
@@ -612,13 +737,13 @@ const $s = StyleSheet.create({
     justifyContent: "center",
   },
   queueTitle: {
-    color: C2.text,
+    color: C.text,
     fontSize: 13,
     fontWeight: "700",
     marginBottom: 2,
   },
   queueMeta: {
-    color: C2.muted,
+    color: C.muted,
     fontSize: 11,
   },
   priorityChip: {
@@ -631,41 +756,5 @@ const $s = StyleSheet.create({
     fontSize: 9,
     fontWeight: "800",
     letterSpacing: 0.5,
-  },
-  // Master
-  masterCard: {
-    backgroundColor: C2.primary,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.xl,
-    alignItems: "center",
-    marginBottom: Spacing.lg,
-  },
-  masterIconWrap: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "rgba(0,0,0,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: Spacing.sm,
-  },
-  masterTitle: {
-    color: "#000",
-    fontWeight: "900",
-    fontSize: 12,
-    letterSpacing: 1,
-  },
-  masterDivider: {
-    width: "100%",
-    height: 1,
-    backgroundColor: "rgba(0,0,0,0.1)",
-    marginVertical: Spacing.sm,
-  },
-  masterVerified: {
-    color: "#000",
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 2,
-    opacity: 0.6,
   },
 });

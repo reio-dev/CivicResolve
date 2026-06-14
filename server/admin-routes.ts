@@ -139,9 +139,9 @@ export async function registerAdminRoutes(app: Express): Promise<void> {
   app.post("/api/admin/users", async (req, res) => {
     try {
       const parsed = insertAdminUserSchema.parse(req.body);
-      const existing = await storage.getAdminUserByEmail(parsed.email);
+      const existing = await storage.getAdminUserByUsername(parsed.username);
       if (existing) {
-        return res.status(400).json({ error: "Email already exists" });
+        return res.status(400).json({ error: "Username already exists" });
       }
       const hashedPassword = await bcrypt.hash(parsed.password, SALT_ROUNDS);
       const adminUser = await storage.createAdminUser({
@@ -282,6 +282,10 @@ export async function registerAdminRoutes(app: Express): Promise<void> {
       const oldStatus = issue.status;
       const updatedIssue = await storage.updateIssueStatus(req.params.id, status);
       await storage.createStatusUpdate(req.params.id, oldStatus, status, note);
+      
+      // Notify the citizen that an admin changed their issue status
+      await storage.notifyUserOfStatusChange(issue, status);
+
       res.json(updatedIssue);
     } catch (error) {
       res.status(500).json({ error: "Failed to update issue status" });

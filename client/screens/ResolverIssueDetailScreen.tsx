@@ -21,6 +21,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import { Image } from "expo-image";
 
 import { ThemedText } from "@/components/ThemedText";
+import { MapcnView } from "@/components/MapcnView";
 import { ThemedView } from "@/components/ThemedView";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/query-client";
@@ -55,6 +56,7 @@ export default function ResolverIssueDetailScreen() {
   const [resolutionImages, setResolutionImages] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [showCamera, setShowCamera] = useState(false);
+  const [mapActive, setMapActive] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);
 
@@ -205,6 +207,7 @@ export default function ResolverIssueDetailScreen() {
       </View>
 
       <ScrollView
+        scrollEnabled={!mapActive}
         contentContainerStyle={{ paddingBottom: insets.bottom + 100 }}
         showsVerticalScrollIndicator={false}
       >
@@ -262,11 +265,22 @@ export default function ResolverIssueDetailScreen() {
             </View>
           </View>
 
-          {/* Map card */}
+          {/* mapcn styled Map */}
           <View style={$s.mapCard}>
-            <View style={$s.mapInner}>
-              <Feather name="map-pin" size={28} color="#F59E0B" />
-            </View>
+            <MapcnView
+              style={{ ...StyleSheet.absoluteFillObject }}
+              theme="dark"
+              zoom={15}
+              center={issue.longitude !== undefined && issue.latitude !== undefined ? [issue.longitude, issue.latitude] : undefined}
+              showsUserLocation={true}
+              onInteract={setMapActive}
+              markers={issue.longitude !== undefined && issue.latitude !== undefined ? [{
+                id: issue.id,
+                coordinate: [issue.longitude, issue.latitude],
+                color: issue.status === "resolved" ? "#10B981" : issue.status === "in_progress" ? "#3B82F6" : "#F59E0B",
+                icon: issue.category === "water" ? "droplet" : issue.category === "electricity" ? "zap" : issue.category === "roads" ? "map" : issue.category === "waste" ? "trash-2" : "alert-circle"
+              }] : []}
+            />
           </View>
 
           {/* ── Resolution Proof ── */}

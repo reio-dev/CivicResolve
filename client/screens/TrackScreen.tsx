@@ -46,7 +46,7 @@ function StatusTimeline({ status }: { status: string }) {
 }
 
 function TrackingCard({ issue, onPress, index }: { issue: any; onPress: () => void; index: number }) {
-  const categoryColor = (CategoryColors as any)[issue.category] || Colors.light.secondary;
+  const categoryColor = (CategoryColors as any)[issue.category] || Colors.light.primary;
   const statusColor = (StatusColors as any)[issue.status] || Colors.light.primary;
   const daysAgo = Math.floor((Date.now() - new Date(issue.createdAt).getTime()) / (1000 * 60 * 60 * 24));
 

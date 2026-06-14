@@ -3,6 +3,7 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, View } from "react-native";
+import { useTranslation } from "react-i18next";
 
 import HomeScreen from "@/screens/HomeScreen";
 import IssuesScreen from "@/screens/IssuesScreen";
@@ -28,6 +29,7 @@ function TabIcon({ name, focused, size }: { name: keyof typeof Feather.glyphMap;
 
 export default function MainTabNavigator() {
   const { theme } = useTheme();
+  const { t } = useTranslation();
 
   return (
     <Tab.Navigator
@@ -65,7 +67,7 @@ export default function MainTabNavigator() {
         name="HomeTab"
         component={HomeScreen}
         options={{
-          title: "Home",
+          title: t("tabs.home"),
           tabBarIcon: ({ focused, size }) => (
             <TabIcon name="home" focused={focused} size={size} />
           ),
@@ -75,7 +77,7 @@ export default function MainTabNavigator() {
         name="IssuesTab"
         component={IssuesScreen}
         options={{
-          title: "Issues",
+          title: t("tabs.report"),
           tabBarIcon: ({ focused, size }) => (
             <TabIcon name="grid" focused={focused} size={size} />
           ),
@@ -85,7 +87,7 @@ export default function MainTabNavigator() {
         name="ProfileTab"
         component={ProfileScreen}
         options={{
-          title: "Profile",
+          title: t("tabs.profile"),
           tabBarIcon: ({ focused, size }) => (
             <TabIcon name="user" focused={focused} size={size} />
           ),
