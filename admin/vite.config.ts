@@ -4,7 +4,8 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/admin/',
+  // Use root base path on Vercel, but keep /admin/ for local Express serving
+  base: process.env.VERCEL ? '/' : '/admin/',
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
