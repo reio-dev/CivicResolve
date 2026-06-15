@@ -6,6 +6,7 @@ import {
   Pressable,
   ActivityIndicator,
   RefreshControl,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -230,8 +231,9 @@ export default function ResolverDashboardScreen() {
         {/* ── App Header ── */}
         <Animated.View entering={FadeInDown.duration(350).delay(0)} style={$s.appHeader}>
           <View style={$s.brandRow}>
-            <Feather name="shield" size={18} color={C.primary} />
-            <ThemedText style={$s.brandName}>CivicResolv</ThemedText>
+            <View style={{ width: 48, height: 48, borderRadius: 24, overflow: 'hidden' }}>
+              <Image source={require("../../assets/images/icon.png")} style={{ width: '100%', height: '100%', transform: [{ scale: 1.5 }] }} resizeMode="cover" />
+            </View>
           </View>
           <Pressable style={$s.bellBtn} onPress={() => navigation.navigate("ResolverNotifications" as any)}>
             <Feather name="bell" size={20} color={C.text} />

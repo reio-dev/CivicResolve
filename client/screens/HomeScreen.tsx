@@ -4,6 +4,7 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  Image,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -117,12 +118,9 @@ export default function HomeScreen() {
         {/* ── Header ── */}
         <Animated.View entering={FadeIn.duration(300)} style={styles.header}>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <View style={styles.logoIcon}>
-              <Feather name="shield" size={16} color={GREEN} />
+            <View style={[styles.logoIcon, { overflow: 'hidden' }]}>
+              <Image source={require("../../assets/images/icon.png")} style={{ width: '100%', height: '100%', transform: [{ scale: 1.4 }] }} resizeMode="cover" />
             </View>
-            <ThemedText type="h4" style={{ fontWeight: "700", marginLeft: Spacing.sm }}>
-              CivicResolv
-            </ThemedText>
           </View>
           <Pressable
             style={styles.bellBtn}
@@ -330,9 +328,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xs,
   },
   logoIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 40,
+    height: 40,
+    borderRadius: 24,
     backgroundColor: GREEN + "20",
     alignItems: "center",
     justifyContent: "center",

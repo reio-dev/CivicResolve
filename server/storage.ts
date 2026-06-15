@@ -922,6 +922,27 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
+    // Fallback mapping for client categories to default department slugs
+    if (!matchingDepartment) {
+      const fallbackMapping: Record<string, string> = {
+        "roads": "road",
+        "electricity": "electrical",
+        "waste": "sanitation",
+        "water": "water",
+        "drainage": "drainage",
+        "sanitation": "sanitation",
+      };
+      const mappedSlug = fallbackMapping[issueCategory.toLowerCase()];
+      if (mappedSlug) {
+        for (const dept of allDepartments) {
+          if (dept.slug === mappedSlug) {
+            matchingDepartment = dept;
+            break;
+          }
+        }
+      }
+    }
+
     if (!matchingDepartment) {
       console.warn(`No department found for category: ${issueCategory}`);
       return null;
