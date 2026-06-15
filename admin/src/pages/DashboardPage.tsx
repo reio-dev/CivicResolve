@@ -93,21 +93,18 @@ const DashboardPage: React.FC = () => {
           title="Total Issues"
           value={formatNumber(stats.totalIssues)}
           icon={<AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-gray-700 dark:text-gray-300" />}
-          trend={{ value: 12, isPositive: true }}
           color="bg-gray-100 dark:bg-zinc-900/50"
         />
         <StatCard
           title="Pending Issues"
           value={formatNumber(stats.pendingIssues)}
           icon={<Clock className="h-5 w-5 sm:h-6 sm:w-6 text-gray-700 dark:text-gray-300" />}
-          trend={{ value: 5, isPositive: false }}
           color="bg-gray-100 dark:bg-zinc-900/50"
         />
         <StatCard
           title="Resolution Rate"
           value={formatPercentage(stats.resolutionRate)}
           icon={<CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 text-green-600 dark:text-green-500" />}
-          trend={{ value: 8, isPositive: true }}
           color="bg-green-50 dark:bg-green-950/30"
         />
         <StatCard

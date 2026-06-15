@@ -16,15 +16,37 @@ import { LanguageProvider } from "@/hooks/useLanguage";
 import { saveLocalNotification } from "@/lib/local-notifications";
 import "@/lib/i18n";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 // Configure how notifications appear when app is in foreground
 Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
+  handleNotification: async (notification) => {
+    let shouldShow = true;
+    try {
+      const data = notification.request.content.data;
+      if (data && data.targetUserId) {
+        const userStr = await AsyncStorage.getItem("@civicresolv_auth");
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          if (user.id !== data.targetUserId) {
+            shouldShow = false;
+          }
+        } else {
+          shouldShow = false;
+        }
+      }
+    } catch (err) {
+      console.error("Error in notification handler:", err);
+    }
+    
+    return {
+      shouldShowAlert: shouldShow,
+      shouldPlaySound: shouldShow,
+      shouldSetBadge: shouldShow,
+      shouldShowBanner: shouldShow,
+      shouldShowList: shouldShow,
+    };
+  },
 });
 
 export default function App() {

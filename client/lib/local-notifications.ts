@@ -21,8 +21,22 @@ export async function getLocalNotifications(): Promise<LocalNotification[]> {
 
     // Filter out notifications older than 24 hours
     const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+    
+    // Get current user id
+    let currentUserId = null;
+    try {
+      const userStr = await AsyncStorage.getItem("@civicresolv_auth");
+      if (userStr) {
+        currentUserId = JSON.parse(userStr).id;
+      }
+    } catch (e) {}
+
     const activeNotifications = notifications.filter(
-      (n) => new Date(n.createdAt).getTime() > twentyFourHoursAgo
+      (n) => {
+        const isRecent = new Date(n.createdAt).getTime() > twentyFourHoursAgo;
+        const isTargetedToCurrentUser = !n.data?.targetUserId || n.data.targetUserId === currentUserId;
+        return isRecent && isTargetedToCurrentUser;
+      }
     );
 
     // If we deleted some, update storage

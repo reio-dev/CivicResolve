@@ -17,6 +17,9 @@ const tables = [
     "resolvers",
     "admin_users",
     "departments",
+    "redemptions",
+    "credit_allocations",
+    "notifications",
     "users",
 ];
 

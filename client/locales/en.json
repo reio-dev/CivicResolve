@@ -211,8 +211,6 @@
     "unknownLocation": "Unknown location",
     "nearLocation": "Near current location",
     "resumeResolution": "RESUME RESOLUTION",
-    "allClear": "All Clear!",
-    "allClearDesc": "No active assignments right now. Check the map for nearby issues.",
     "priorityQueue": "Priority Queue",
     "noPending": "No pending issues.",
     "unableToLoad": "Unable to load dashboard.",

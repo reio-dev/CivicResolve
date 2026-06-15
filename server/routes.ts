@@ -1,11 +1,13 @@
 import type { Express } from "express";
 import { createServer, type Server } from "node:http";
 import { storage } from "./storage";
-import { insertUserSchema, insertIssueSchema, insertValidationSchema, insertCommentSchema } from "@shared/schema";
+import { insertUserSchema, insertIssueSchema, insertValidationSchema, insertCommentSchema, adminUsers, users } from "@shared/schema";
 import { z } from "zod";
 import { registerAdminRoutes, initializeDefaultAdmin } from "./admin-routes";
 import { sendPushNotification } from "./push";
 import bcrypt from "bcrypt";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 // Configurable validation threshold for auto-assignment
 // Change this value to control how many "verified" votes trigger auto-assignment
@@ -84,6 +86,85 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Resolver login error:", error);
       res.status(500).json({ error: "Login failed" });
+    }
+  });
+
+  app.post("/api/auth/change-password", async (req, res) => {
+    try {
+      const { userId, role, currentPassword, newPassword } = req.body;
+      if (!userId || !currentPassword || !newPassword) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      if (role === "resolver" || role === "admin") {
+        const user = await storage.getAdminUser(userId);
+        if (!user) return res.status(404).json({ error: "User not found" });
+        
+        const isValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isValid) return res.status(400).json({ error: "Incorrect current password" });
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        await db.update(adminUsers).set({ password: hashedPassword }).where(eq(adminUsers.id, userId));
+      } else {
+        const user = await storage.getUser(userId);
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        const isValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isValid) return res.status(400).json({ error: "Incorrect current password" });
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        await storage.updateUser(userId, { password: hashedPassword });
+      }
+
+      res.json({ success: true, message: "Password updated successfully" });
+    } catch (error) {
+      console.error("Change password error:", error);
+      res.status(500).json({ error: "Failed to change password" });
+    }
+  });
+
+  app.post("/api/auth/delete-account", async (req, res) => {
+    try {
+      const { userId, role, password } = req.body;
+      if (!userId || !password) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+
+      if (role === "resolver" || role === "admin") {
+        const user = await storage.getAdminUser(userId);
+        if (!user) return res.status(404).json({ error: "User not found" });
+        
+        const isValid = await bcrypt.compare(password, user.password);
+        if (!isValid) return res.status(400).json({ error: "Incorrect password" });
+
+        await db.update(adminUsers).set({ 
+          status: "inactive",
+          pushToken: null,
+          email: null,
+          phone: null
+        }).where(eq(adminUsers.id, userId));
+      } else {
+        const user = await storage.getUser(userId);
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        const isValid = await bcrypt.compare(password, user.password);
+        if (!isValid) return res.status(400).json({ error: "Incorrect password" });
+
+        await db.update(users).set({
+          username: `deleted_${userId.substring(0,8)}`,
+          password: await bcrypt.hash(Math.random().toString(), 10),
+          displayName: "Deleted User",
+          email: null,
+          phone: null,
+          pushToken: null,
+          avatarUrl: null
+        }).where(eq(users.id, userId));
+      }
+
+      res.json({ success: true, message: "Account deleted successfully" });
+    } catch (error) {
+      console.error("Delete account error:", error);
+      res.status(500).json({ error: "Failed to delete account" });
     }
   });
 
@@ -409,7 +490,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 match.adminUser.pushToken,
                 "🚨 New Issue Assigned",
                 `${issue.title} — ${issue.address || issue.district || "Unknown location"}`,
-                { issueId: issue.id, assignmentId: assignment.id, type: "assignment" }
+                { issueId: issue.id, assignmentId: assignment.id, type: "assignment", targetUserId: match.adminUser.id }
               );
             }
 

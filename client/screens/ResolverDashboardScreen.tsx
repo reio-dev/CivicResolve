@@ -68,12 +68,12 @@ export default function ResolverDashboardScreen() {
     })();
   }, []);
 
-  const resolverId = (user as any)?.resolverId ?? null;
-
   const { data, isLoading, refetch: refetchDashboard } = useQuery<any>({
     queryKey: [`/api/resolver/dashboard/${user?.id}`],
     enabled: !!user?.id && user?.role === "resolver",
   });
+
+  const resolverId = (user as any)?.resolverId ?? data?.resolver?.id ?? null;
 
   // Fetch assignments
   const { data: assignments = [], refetch: refetchAssignments } = useQuery<any[]>({
@@ -132,9 +132,7 @@ export default function ResolverDashboardScreen() {
   const xp = Number(data.resolver?.xp ?? 0);
   const level = Number(data.resolver?.level ?? 1);
   const totalResolved = Number(data.resolver?.totalResolved ?? 0);
-  const rawQueue: any[] = assignments
-    .filter((a: any) => a.issue && a.status !== "completed")
-    .map((a: any) => a.issue);
+  const rawQueue: any[] = data.priorityQueue || [];
 
   const priorityWeight = (priority?: string) => {
     switch (priority?.toLowerCase()) {
@@ -160,7 +158,7 @@ export default function ResolverDashboardScreen() {
       const pA = priorityWeight(a.priority);
       const pB = priorityWeight(b.priority);
       if (pA !== pB) return pB - pA; // Descending priority
-      
+
       if (userLoc && a.latitude && a.longitude && b.latitude && b.longitude) {
         const distA = haversine(userLoc[1], userLoc[0], a.latitude, a.longitude);
         const distB = haversine(userLoc[1], userLoc[0], b.latitude, b.longitude);
@@ -171,16 +169,14 @@ export default function ResolverDashboardScreen() {
     return sorted;
   }, [rawQueue, userLoc]);
 
-  const activeJob = data.activeJob ?? null;
-  const fullActiveJob = queue.length > 0 ? queue[0] : null;
+  const fullActiveJob = data.activeJob ?? null;
   const activeAssignments = assignments.filter((a: any) => a.status !== "completed").length;
   const rating = (user as any)?.rating ?? 0;
 
   const goActiveJob = () => {
     if (fullActiveJob) {
-      const assignment = assignments.find((a: any) => a.issueId === fullActiveJob.id);
       navigation.navigate("ResolverIssueDetail", {
-        assignmentId: assignment?.id?.toString() || activeJob?.assignmentId,
+        assignmentId: fullActiveJob.assignmentId,
         issueId: fullActiveJob.id,
       });
     }
@@ -347,16 +343,7 @@ export default function ResolverDashboardScreen() {
           </Animated.View>
         )}
 
-        {/* ── No Active Job ── */}
-        {!fullActiveJob && (
-          <Animated.View entering={FadeInDown.duration(350).delay(180)} style={$s.noJobCard}>
-            <View style={$s.noJobIconWrap}>
-              <Feather name="check" size={28} color={C.primary} />
-            </View>
-            <ThemedText style={$s.noJobTitle}>{t("resolverDash.allClear")}</ThemedText>
-            <ThemedText style={$s.noJobDesc}>{t("resolverDash.allClearDesc")}</ThemedText>
-          </Animated.View>
-        )}
+
 
         {/* ── Priority Queue ── */}
         <Animated.View entering={FadeInDown.duration(350).delay(220)} style={$s.queueContainer}>
@@ -374,7 +361,7 @@ export default function ResolverDashboardScreen() {
             </View>
           )}
 
-          {queue.length > 1 && queue.slice(1).map((item, i) => (
+          {queue.length > 0 && queue.map((item, i) => (
             <Pressable key={item.id ?? i} style={$s.queueRow}>
               <View style={[$s.queueIconBg, { backgroundColor: `${priorityColor(item.priority)}22` }]}>
                 <Feather name={priorityIcon(item.priority)} size={16} color={priorityColor(item.priority)} />
@@ -649,37 +636,6 @@ const $s = StyleSheet.create({
     fontWeight: "900",
     fontSize: 12,
     letterSpacing: 1.5,
-  },
-  // No active job
-  noJobCard: {
-    backgroundColor: C.surface,
-    borderRadius: BorderRadius.lg,
-    padding: Spacing.xl,
-    marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: C.border,
-    alignItems: "center",
-  },
-  noJobIconWrap: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: `${C.primary}15`,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: Spacing.md,
-  },
-  noJobTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: C.text,
-    marginBottom: Spacing.xs,
-  },
-  noJobDesc: {
-    fontSize: 13,
-    color: C.muted,
-    textAlign: "center",
-    lineHeight: 19,
   },
   // Queue
   queueContainer: {

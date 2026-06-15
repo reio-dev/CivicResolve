@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, StyleSheet, Switch, ScrollView, Pressable, Modal } from "react-native";
+import { View, StyleSheet, Switch, ScrollView, Pressable, Modal, Alert, TextInput } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -13,6 +13,7 @@ import { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { useLanguage } from "@/hooks/useLanguage";
 import { useAuth } from "@/hooks/useAuth";
 import { useTranslation } from "react-i18next";
+import { apiRequest } from "@/lib/query-client";
 
 const GREEN = Colors.light.primary;
 const CARD_BG = Colors.light.surface;
@@ -32,7 +33,98 @@ export default function SettingsScreen() {
   const { language: selectedLanguage, setLanguage: setSelectedLanguage } = useLanguage();
   const [loading, setLoading] = useState(true);
   const { t } = useTranslation();
-  const { isResolver } = useAuth();
+  const { isResolver, user, logout } = useAuth();
+
+  // Modals state
+  const [passwordModalVisible, setPasswordModalVisible] = useState(false);
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  
+  // Form state
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleChangePassword = async () => {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      Alert.alert(t("error", "Error"), t("settings.fillAllFields", "Please fill all fields"));
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      Alert.alert(t("error", "Error"), t("settings.passwordsMismatch", "New passwords do not match"));
+      return;
+    }
+    if (!user) return;
+
+    setIsSubmitting(true);
+    try {
+      const res = await apiRequest("POST", "/api/auth/change-password", {
+        userId: user.id,
+        role: user.role,
+        currentPassword,
+        newPassword
+      });
+      
+      if (res.ok) {
+        Alert.alert(t("success", "Success"), t("settings.passwordChanged", "Password changed successfully"));
+        setPasswordModalVisible(false);
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      } else {
+        const data = await res.json();
+        Alert.alert(t("error", "Error"), data.error || "Failed to change password");
+      }
+    } catch (e) {
+      Alert.alert(t("error", "Error"), "An unexpected error occurred");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!deletePassword) {
+      Alert.alert(t("error", "Error"), t("settings.enterPassword", "Please enter your password to confirm"));
+      return;
+    }
+    if (!user) return;
+
+    Alert.alert(
+      t("settings.deleteAccount", "Delete Account"),
+      t("settings.confirmDelete", "Are you sure? This action cannot be undone."),
+      [
+        { text: t("cancel", "Cancel"), style: "cancel" },
+        { 
+          text: t("delete", "Delete"), 
+          style: "destructive",
+          onPress: async () => {
+            setIsSubmitting(true);
+            try {
+              const res = await apiRequest("POST", "/api/auth/delete-account", {
+                userId: user.id,
+                role: user.role,
+                password: deletePassword
+              });
+              
+              if (res.ok) {
+                Alert.alert(t("success", "Success"), t("settings.accountDeleted", "Account deleted successfully"));
+                setDeleteModalVisible(false);
+                logout();
+              } else {
+                const data = await res.json();
+                Alert.alert(t("error", "Error"), data.error || "Failed to delete account");
+              }
+            } catch (e) {
+              Alert.alert(t("error", "Error"), "An unexpected error occurred");
+            } finally {
+              setIsSubmitting(false);
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const LANGUAGES = [
     "English (US)",
@@ -89,7 +181,10 @@ export default function SettingsScreen() {
       >
         <ThemedText style={styles.sectionTitle}>{t("settings.account")}</ThemedText>
         <View style={styles.card}>
-          <Pressable style={[styles.settingRow, styles.borderBottom]}>
+          <Pressable 
+            style={[styles.settingRow, styles.borderBottom]}
+            onPress={() => setPasswordModalVisible(true)}
+          >
             <View style={styles.settingInfo}>
               <View style={styles.iconBox}>
                 <Feather name="lock" size={20} color={GREEN} />
@@ -101,7 +196,10 @@ export default function SettingsScreen() {
             </View>
             <Feather name="chevron-right" size={20} color={DIM} />
           </Pressable>
-          <Pressable style={styles.settingRow}>
+          <Pressable 
+            style={styles.settingRow}
+            onPress={() => setDeleteModalVisible(true)}
+          >
             <View style={styles.settingInfo}>
               <View style={styles.iconBox}>
                 <Feather name="trash-2" size={20} color="#EF4444" />
@@ -252,6 +350,90 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+      {/* Password Change Modal */}
+      <Modal visible={passwordModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>{t("settings.changePassword")}</ThemedText>
+              <Pressable onPress={() => setPasswordModalVisible(false)}>
+                <Feather name="x" size={24} color={TEXT} />
+              </Pressable>
+            </View>
+            <View style={{ marginBottom: Spacing.lg }}>
+              <TextInput
+                style={styles.input}
+                placeholder="Current Password"
+                placeholderTextColor={DIM}
+                secureTextEntry
+                value={currentPassword}
+                onChangeText={setCurrentPassword}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="New Password"
+                placeholderTextColor={DIM}
+                secureTextEntry
+                value={newPassword}
+                onChangeText={setNewPassword}
+              />
+              <TextInput
+                style={styles.input}
+                placeholder="Confirm New Password"
+                placeholderTextColor={DIM}
+                secureTextEntry
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+              />
+              <Pressable 
+                style={[styles.primaryButton, isSubmitting && { opacity: 0.7 }]} 
+                onPress={handleChangePassword}
+                disabled={isSubmitting}
+              >
+                <ThemedText style={styles.primaryButtonText}>
+                  {isSubmitting ? "Changing..." : "Change Password"}
+                </ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Account Modal */}
+      <Modal visible={deleteModalVisible} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.modalHeader}>
+              <ThemedText style={styles.modalTitle}>{t("settings.deleteAccount")}</ThemedText>
+              <Pressable onPress={() => setDeleteModalVisible(false)}>
+                <Feather name="x" size={24} color={TEXT} />
+              </Pressable>
+            </View>
+            <View style={{ marginBottom: Spacing.lg }}>
+              <ThemedText style={{ color: "#EF4444", marginBottom: Spacing.md }}>
+                {t("settings.deleteAccountDesc", "This will permanently delete your account and all associated data.")}
+              </ThemedText>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter Password to Confirm"
+                placeholderTextColor={DIM}
+                secureTextEntry
+                value={deletePassword}
+                onChangeText={setDeletePassword}
+              />
+              <Pressable 
+                style={[styles.dangerButton, isSubmitting && { opacity: 0.7 }]} 
+                onPress={handleDeleteAccount}
+                disabled={isSubmitting}
+              >
+                <ThemedText style={styles.dangerButtonText}>
+                  {isSubmitting ? "Deleting..." : "Permanently Delete"}
+                </ThemedText>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ThemedView>
   );
 }
@@ -349,5 +531,39 @@ const styles = StyleSheet.create({
   languageText: {
     fontSize: 16,
     color: TEXT,
+  },
+  input: {
+    backgroundColor: Colors.light.surfaceHighlight,
+    borderRadius: BorderRadius.lg,
+    padding: Spacing.md,
+    fontSize: 16,
+    color: TEXT,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.light.surfaceHighlight,
+  },
+  primaryButton: {
+    backgroundColor: GREEN,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    alignItems: "center",
+    marginTop: Spacing.sm,
+  },
+  primaryButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  dangerButton: {
+    backgroundColor: "#EF4444",
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.lg,
+    alignItems: "center",
+    marginTop: Spacing.sm,
+  },
+  dangerButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
   },
 });

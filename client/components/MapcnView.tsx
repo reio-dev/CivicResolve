@@ -31,16 +31,23 @@ export function MapcnView({
 }: MapcnViewProps) {
   const webViewRef = useRef<WebView>(null);
   const [currentLoc, setCurrentLoc] = useState<[number, number] | null>(null);
+  const [locationLoaded, setLocationLoaded] = useState(!showsUserLocation);
 
   useEffect(() => {
     if (showsUserLocation) {
       (async () => {
-        let { status } = await Location.requestForegroundPermissionsAsync();
-        if (status === 'granted') {
-          let location = await Location.getCurrentPositionAsync({
-            accuracy: Location.Accuracy.Balanced,
-          });
-          setCurrentLoc([location.coords.longitude, location.coords.latitude]);
+        try {
+          let { status } = await Location.requestForegroundPermissionsAsync();
+          if (status === 'granted') {
+            let location = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            });
+            setCurrentLoc([location.coords.longitude, location.coords.latitude]);
+          }
+        } catch (e) {
+          console.error("Failed to get location:", e);
+        } finally {
+          setLocationLoaded(true);
         }
       })();
     }
@@ -280,6 +287,10 @@ export function MapcnView({
     </html>
   `;
   });
+
+  if (!locationLoaded) {
+    return <View style={[styles.container, style, { backgroundColor: 'transparent' }]} />;
+  }
 
   return (
       <View style={[styles.container, style]}>

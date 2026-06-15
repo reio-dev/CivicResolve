@@ -821,6 +821,7 @@ export class DatabaseStorage implements IStorage {
 
     return {
       resolver: {
+        id: resolverProfile.id,
         totalResolved: resolverProfile.totalResolved,
         uptime: resolverProfile.onTimeDelivery,
         level: Math.floor((resolverProfile.totalResolved * 120) / 1000) + 1,
@@ -836,6 +837,7 @@ export class DatabaseStorage implements IStorage {
         status: activeJob.assignment.status,
         latitude: activeJob.issue.latitude,
         longitude: activeJob.issue.longitude,
+        category: activeJob.issue.category,
       } : null,
       departmentRankings: rankingsList,
       myDepartmentId: departmentId,
@@ -870,7 +872,7 @@ export class DatabaseStorage implements IStorage {
           reporter.pushToken,
           "📣 Issue Status Updated",
           `Your issue "${issue.title}" is now ${newStatus}.`,
-          { issueId: issue.id, type: "status_update" }
+          { issueId: issue.id, type: "status_update", targetUserId: reporter.id }
         );
       }
     } catch (err) {
@@ -887,7 +889,7 @@ export class DatabaseStorage implements IStorage {
           user.pushToken,
           "🎉 Credits Awarded!",
           `You earned ${amount} credits. ${reason}`,
-          { type: "credits_awarded", amount }
+          { type: "credits_awarded", amount, targetUserId: user.id }
         );
       }
     } catch (err) {
