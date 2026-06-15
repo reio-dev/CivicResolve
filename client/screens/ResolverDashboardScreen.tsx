@@ -132,7 +132,18 @@ export default function ResolverDashboardScreen() {
   const xp = Number(data.resolver?.xp ?? 0);
   const level = Number(data.resolver?.level ?? 1);
   const totalResolved = Number(data.resolver?.totalResolved ?? 0);
-  const rawQueue: any[] = data.priorityQueue || [];
+  const fullActiveJob = data.activeJob ?? null;
+
+  // The raw queue should be the rest of the resolver's unfinished assignments
+  const rawQueue: any[] = assignments
+    .filter((a: any) => {
+      // Exclude completed jobs
+      if (a.status === "completed") return false;
+      // Exclude the currently active job
+      if (fullActiveJob && a.issue?.id === fullActiveJob.id) return false;
+      return !!a.issue;
+    })
+    .map((a: any) => a.issue);
 
   const priorityWeight = (priority?: string) => {
     switch (priority?.toLowerCase()) {
@@ -168,8 +179,6 @@ export default function ResolverDashboardScreen() {
     });
     return sorted;
   }, [rawQueue, userLoc]);
-
-  const fullActiveJob = data.activeJob ?? null;
   const activeAssignments = assignments.filter((a: any) => a.status !== "completed").length;
   const rating = (user as any)?.rating ?? 0;
 

@@ -73,7 +73,8 @@ export default function ReportIssueScreen() {
   const [analyzingWordIndex, setAnalyzingWordIndex] = useState(0);
   const analyzingWords = [t("report.analyzing"), t("report.understanding"), t("report.classifying"), t("report.generating")];
   const [isGroqEnabled, setIsGroqEnabled] = useState(true);
-
+  const [imageBase64Data, setImageBase64Data] = useState<string | null>(null);
+  const [audioBase64Data, setAudioBase64Data] = useState<string | null>(null);
   useEffect(() => {
     const loadSettings = async () => {
       try {
@@ -234,6 +235,7 @@ export default function ReportIssueScreen() {
         const audioFile = new File(uri);
         audioBase64 = await audioFile.base64();
       }
+      setAudioBase64Data(audioBase64);
 
       // Try server-side transcription
       const response = await apiRequest("POST", "/api/transcribe", {
@@ -377,6 +379,7 @@ export default function ReportIssueScreen() {
     setIsAnalyzing(true);
     try {
       const base64Image = await convertImageToBase64(uri);
+      setImageBase64Data(base64Image);
       const response = await apiRequest("POST", "/api/analyze-image", { image: base64Image, language });
       if (response.ok) {
         const data = await response.json();
@@ -457,29 +460,23 @@ export default function ReportIssueScreen() {
     let currentLoc = location;
 
     try {
-      if (locationPermission?.granted) {
+      if (locationPermission?.granted && !currentLoc) {
         const freshLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        if (
-          !currentLoc ||
-          Math.abs(freshLoc.coords.latitude - currentLoc.latitude) > 0.0001 ||
-          Math.abs(freshLoc.coords.longitude - currentLoc.longitude) > 0.0001
-        ) {
-          const [address] = await Location.reverseGeocodeAsync({ latitude: freshLoc.coords.latitude, longitude: freshLoc.coords.longitude });
-          const area = (address as any)?.subLocality || address?.street || "";
-          const district = address?.city || (address as any)?.district || "";
-          const state = address?.region || "";
-          const postalCode = address?.postalCode || "";
-          const addressParts = [area, district, state, postalCode].filter(Boolean);
-          const fullAddress = addressParts.join(", ");
+        const [address] = await Location.reverseGeocodeAsync({ latitude: freshLoc.coords.latitude, longitude: freshLoc.coords.longitude });
+        const area = (address as any)?.subLocality || address?.street || "";
+        const district = address?.city || (address as any)?.district || "";
+        const state = address?.region || "";
+        const postalCode = address?.postalCode || "";
+        const addressParts = [area, district, state, postalCode].filter(Boolean);
+        const fullAddress = addressParts.join(", ");
 
-          currentLoc = {
-            latitude: freshLoc.coords.latitude,
-            longitude: freshLoc.coords.longitude,
-            address: fullAddress,
-            district
-          };
-          setLocation(currentLoc);
-        }
+        currentLoc = {
+          latitude: freshLoc.coords.latitude,
+          longitude: freshLoc.coords.longitude,
+          address: fullAddress,
+          district
+        };
+        setLocation(currentLoc);
       }
     } catch (e) {
       console.log("Location verification failed:", e);
@@ -506,23 +503,29 @@ export default function ReportIssueScreen() {
 
     // Upload image
     if (capturedImage) {
-      try {
-        const base64Image = await convertImageToBase64(capturedImage);
-        mediaUrls.push(base64Image);
-      } catch (error) {
-        console.error("Image conversion failed:", error);
+      if (imageBase64Data) {
+        mediaUrls.push(imageBase64Data);
+      } else {
+        try {
+          const base64Image = await convertImageToBase64(capturedImage);
+          mediaUrls.push(base64Image);
+        } catch (error) {
+          console.error("Image conversion failed:", error);
+        }
       }
     }
 
     // Upload audio
     if (audioUri) {
-      try {
-        const base64Audio = await convertAudioToBase64(audioUri);
-        if (base64Audio) {
-          mediaUrls.push(base64Audio);
+      if (audioBase64Data) {
+        mediaUrls.push(audioBase64Data);
+      } else {
+        try {
+          const base64Audio = await convertAudioToBase64(audioUri);
+          if (base64Audio) mediaUrls.push(base64Audio);
+        } catch (error) {
+          console.error("Audio conversion failed:", error);
         }
-      } catch (error) {
-        console.error("Audio conversion failed:", error);
       }
     }
 

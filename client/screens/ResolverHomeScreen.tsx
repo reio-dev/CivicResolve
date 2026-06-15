@@ -82,10 +82,17 @@ const getStatusColor = (status: string) => {
     case "reported": return "#3B82F6";
     case "verified": return "#3B82F6";
     case "assigned": return "#F59E0B";
+    case "in_progress":
     case "inProgress": return "#F97316";
     case "resolved": return GREEN;
     default: return MUTED;
   }
+};
+
+const formatStatusKey = (status: string) => {
+  if (!status) return "";
+  if (status === "in_progress") return "InProgress";
+  return status.charAt(0).toUpperCase() + status.slice(1);
 };
 
 function timeAgo(dateStr: string): string {
@@ -447,7 +454,7 @@ export default function ResolverHomeScreen() {
                   </View>
                   <View style={[styles.sheetTag, { backgroundColor: getStatusColor(selectedIssue.status) }]}>
                     <ThemedText style={styles.sheetTagText}>
-                      {t(`issues.status${selectedIssue.status?.charAt(0).toUpperCase()}${selectedIssue.status?.slice(1)}`) || selectedIssue.status?.toUpperCase()}
+                      {t(`issues.status${formatStatusKey(selectedIssue.status)}`) || selectedIssue.status?.toUpperCase()}
                     </ThemedText>
                   </View>
                   {isAssignedToMe && (

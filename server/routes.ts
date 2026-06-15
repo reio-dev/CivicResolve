@@ -470,17 +470,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Find nearest resolver
           const match = await storage.findNearestResolver(issue.category, issue.latitude, issue.longitude);
           if (match) {
+            // Check if resolver has active assignments
+            const existingAssignments = await storage.getResolverAssignments(match.resolver.id);
+            const hasActive = existingAssignments.some(a => a.assignment.status === "in_progress");
+            const initialStatus = hasActive ? "pending" : "in_progress";
+            const initialIssueStatus = hasActive ? "assigned" : "in_progress";
+
             // Create assignment
             const assignment = await storage.createIssueAssignment({
               issueId: issue.id,
               resolverId: match.resolver.id,
               assignedBy: match.adminUser.id,
+              status: initialStatus,
               notes: "Auto-assigned based on validation threshold and proximity",
             });
 
-            // Update issue status to assigned
-            await storage.updateIssueStatus(issue.id, "assigned");
-            await storage.createStatusUpdate(issue.id, "verified", "assigned", `Auto-assigned to ${match.adminUser.name}`);
+            // Update issue status
+            await storage.updateIssueStatus(issue.id, initialIssueStatus);
+            await storage.createStatusUpdate(issue.id, "verified", initialIssueStatus, `Auto-assigned to ${match.adminUser.name}`);
             await storage.incrementResolverLoad(match.resolver.id);
 
 
@@ -495,7 +502,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
 
             // Notify citizen of assigned status
-            await storage.notifyUserOfStatusChange(issue, "assigned");
+            await storage.notifyUserOfStatusChange(issue, initialIssueStatus);
 
             console.log(`Auto-assigned issue ${issue.id} to resolver ${match.adminUser.name}`);
           } else {
