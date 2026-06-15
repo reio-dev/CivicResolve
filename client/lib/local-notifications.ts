@@ -52,7 +52,7 @@ export async function saveLocalNotification(
     const title = notification.request.content.title || "New Notification";
     const message = notification.request.content.body || "";
     const data = notification.request.content.data || {};
-    const type = data.type || "unknown";
+    const type = typeof data.type === "string" ? data.type : "unknown";
     
     // Use the push notification identifier as our ID to avoid duplicates
     const id = notification.request.identifier;
