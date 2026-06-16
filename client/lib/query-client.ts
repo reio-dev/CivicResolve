@@ -13,14 +13,9 @@ export function getApiUrl(): string {
     throw new Error("EXPO_PUBLIC_DOMAIN is not set");
   }
 
-  // If the user provided a full URL in the env var, respect it completely
-  if (host.startsWith("http://") || host.startsWith("https://")) {
-    return host;
-  }
-
-  // Otherwise, default to http for local development 
-  // (We do not auto-enforce https based on window.location because the local Express server does not run an SSL certificate)
-  return `http://${host}`;
+  // Use https for production domains, http for local development
+  const isLocalhost = host.includes('localhost') || host.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/);
+  return `${isLocalhost ? 'http' : 'https'}://${host}`;
 }
 
 async function throwIfResNotOk(res: Response) {
